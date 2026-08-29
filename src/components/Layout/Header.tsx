@@ -10,7 +10,7 @@ export const Header = ({ mode, setMode, onOpenSettings }: HeaderProps) => (
 	<header>
 		<div className="brand">
 			<h1>Subnet<span className="accent">Studio</span></h1>
-			<span className="tagline">// React PWA Version</span>
+			<span className="tagline">// v0.0.1a</span>
 		</div>
 
 		<div className="header-right">

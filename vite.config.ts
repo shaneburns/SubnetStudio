@@ -10,7 +10,7 @@ export default defineConfig({
       manifest: {
         name: 'Subnet Studio',
         short_name: 'SubnetStudio',
-        description: 'Visual IPv4 subnetting tool',
+        description: 'Visual IPv4 subnetting tool — v0.0.1a',
         theme_color: '#0B1E2D',
         icons: [
           {
