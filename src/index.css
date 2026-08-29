@@ -932,6 +932,28 @@ footer{
   font-family:'IBM Plex Mono', monospace;
   display:flex;
   justify-content:space-between;
+  align-items:center;
+}
+.footer-right{
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+.footer-gh{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  color:var(--muted-2);
+  text-decoration:none;
+  transition:color .15s ease;
+}
+.footer-gh:hover{ color:var(--text); }
+.footer-gh__icon{
+  width:13px;
+  height:13px;
+  fill:currentColor;
+  flex-shrink:0;
+  vertical-align:middle;
 }
 
 /* ── HEADER RIGHT GROUP ─────────────────────────────────── */
