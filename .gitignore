@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Vite / TypeScript caches
+.vite/
+*.tsbuildinfo
+
+# PWA generated files (regenerated on build)
+public/sw.js
+public/workbox-*.js
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Zone identifiers (Windows WSL artifacts)
+*.Identifier

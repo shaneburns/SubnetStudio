@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subnet Studio — mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B1E2D;
+    --panel:#0F2740;
+    --panel-2:#0C2236;
+    --grid:#1C3B54;
+    --grid-soft:#16314A;
+    --text:#E8EEF2;
+    --muted:#7E9AB0;
+    --muted-2:#5C7C92;
+    --network:#E8954A;
+    --network-dim:#5A4129;
+    --host:#4FC7D4;
+    --host-dim:#234A50;
+    --error:#D9776A;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      linear-gradient(var(--grid-soft) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--grid-soft) 1px, transparent 1px) 0 0/28px 100%,
+      var(--bg);
+    background-attachment:fixed;
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    padding:28px;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+
+  header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    max-width:1180px;
+    margin:0 auto 22px;
+    padding-bottom:16px;
+    border-bottom:1px solid var(--grid);
+  }
+  header .brand{display:flex; align-items:baseline; gap:10px;}
+  header h1{
+    font-size:18px;
+    font-weight:600;
+    letter-spacing:0.04em;
+    margin:0;
+    text-transform:uppercase;
+  }
+  header .brand .accent{color:var(--network);}
+  header .tagline{font-size:12px; color:var(--muted-2); font-family:'IBM Plex Mono', monospace;}
+  header .mode-toggle{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--muted);
+    display:flex; gap:0;
+    border:1px solid var(--grid);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  header .mode-toggle span{padding:6px 12px; cursor:pointer;}
+  header .mode-toggle span.active{background:var(--panel); color:var(--network);}
+
+  .layout{
+    max-width:1180px;
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:280px 1fr;
+    gap:20px;
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--grid);
+    border-radius:var(--radius);
+    padding:18px;
+  }
+  .panel + .panel{margin-top:20px;}
+
+  .label{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted-2);
+    margin:0 0 10px;
+    font-weight:600;
+  }
+
+  /* ---- INPUT RAIL ---- */
+  .cidr-input{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--grid);
+    color:var(--text);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:18px;
+    padding:11px 12px;
+    border-radius:var(--radius);
+    letter-spacing:0.02em;
+    outline:none;
+  }
+  .cidr-input:focus{border-color:var(--network);}
+  .cidr-input.invalid{border-color:var(--error); color:var(--error);}
+  .input-hint{font-size:11px; color:var(--muted-2); margin-top:7px; font-family:'IBM Plex Mono', monospace; min-height:14px;}
+  .input-hint.error{color:var(--error);}
+
+  .fact-row{
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding:7px 0;
+    border-bottom:1px solid var(--grid-soft);
+    font-size:12.5px;
+  }
+  .fact-row:last-child{border-bottom:none;}
+  .fact-row .k{color:var(--muted);}
+  .fact-row .v{font-family:'IBM Plex Mono', monospace; color:var(--text); font-weight:500;}
+  .fact-row .v.network{color:var(--network);}
+  .fact-row .v.host{color:var(--host);}
+
+  .prefix-buttons{display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;}
+  .prefix-buttons button{
+    background:var(--panel-2);
+    border:1px solid var(--grid);
+    color:var(--muted);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    padding:5px 8px;
+    border-radius:var(--radius);
+    cursor:pointer;
+  }
+  .prefix-buttons button:hover{border-color:var(--muted);}
+  .prefix-buttons button.active{
+    background:var(--network-dim);
+    border-color:var(--network);
+    color:var(--network);
+  }
+
+  /* ---- MAIN COLUMN ---- */
+  .main-col .panel{margin-bottom:20px;}
+
+  /* bit ruler */
+  .bitruler-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;}
+  .bitruler-head .label{margin:0;}
+  .bitruler-head .hint{font-size:11px; color:var(--muted-2); font-family:'IBM Plex Mono', monospace;}
+  .octets{display:flex; gap:10px;}
+  .octet{flex:1;}
+  .octet-label{font-size:10px; color:var(--muted-2); font-family:'IBM Plex Mono', monospace; margin-bottom:5px; text-align:center;}
+  .bits{display:flex; gap:2px;}
+  .bit{
+    flex:1;
+    height:34px;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    border-radius:2px;
+    cursor:pointer;
+    user-select:none;
+    background:var(--host-dim);
+    color:var(--host);
+    border:1px solid transparent;
+    transition:transform .06s ease;
+  }
+  .bit.network{background:var(--network-dim); color:var(--network);}
+  .bit:hover{border-color:var(--text); transform:translateY(-1px);}
+  .bit.boundary{box-shadow:inset 0 0 0 1.5px var(--text);}
+
+  .legend{display:flex; gap:18px; margin-top:12px; font-size:11px; color:var(--muted);}
+  .legend .swatch{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px;}
+  .swatch.network{background:var(--network);}
+  .swatch.host{background:var(--host);}
+
+  /* block map */
+  .blockmap-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .split-control{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); font-family:'IBM Plex Mono', monospace;}
+  .split-control select{
+    background:var(--panel-2);
+    border:1px solid var(--grid);
+    color:var(--text);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    padding:5px 7px;
+    border-radius:var(--radius);
+  }
+  .blockmap{display:flex; gap:3px; height:64px;}
+  .block{
+    background:var(--panel-2);
+    border:1px solid var(--grid);
+    border-top:3px solid var(--host);
+    border-radius:2px;
+    flex:1;
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    cursor:pointer;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    color:var(--muted);
+    gap:2px;
+    min-width:0;
+    padding:0 4px;
+    transition:background .1s ease, border-color .1s ease;
+  }
+  .block .bnum{color:var(--text); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+  .block:hover{background:var(--host-dim); border-color:var(--host);}
+  .block.selected{background:var(--host-dim); border-color:var(--host); border-top-color:var(--network);}
+  .blockmap-note{font-size:11px; color:var(--muted-2); margin-top:10px; font-family:'IBM Plex Mono', monospace;}
+
+  /* range report */
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{
+    text-align:left;
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--muted-2);
+    font-weight:600;
+    padding:0 10px 9px;
+    border-bottom:1px solid var(--grid);
+  }
+  tbody td{
+    padding:9px 10px;
+    font-family:'IBM Plex Mono', monospace;
+    border-bottom:1px solid var(--grid-soft);
+    color:var(--text);
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr.selected{background:var(--panel-2);}
+  tbody tr:hover{background:var(--panel-2); cursor:pointer;}
+  td.idx{color:var(--muted-2); font-size:11px;}
+  td.usable{color:var(--host);}
+
+  footer{
+    max-width:1180px; margin:24px auto 0; padding-top:16px;
+    border-top:1px solid var(--grid);
+    font-size:11px; color:var(--muted-2); font-family:'IBM Plex Mono', monospace;
+    display:flex; justify-content:space-between;
+  }
+
+  @media (max-width: 880px){
+    .layout{grid-template-columns:1fr;}
+    .octets{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Subnet<span class="accent">Studio</span></h1>
+    <span class="tagline">// mockup — IPv4 working model</span>
+  </div>
+  <div class="mode-toggle">
+    <span class="active">IPv4</span><span title="not wired up in this mockup">IPv6</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT RAIL -->
+  <div class="rail">
+    <div class="panel">
+      <p class="label">Network</p>
+      <input class="cidr-input mono" id="cidrInput" value="192.168.1.0/24" spellcheck="false">
+      <div class="input-hint" id="cidrHint">Enter address and prefix, e.g. 10.0.0.0/22</div>
+
+      <div class="prefix-buttons" id="prefixButtons"></div>
+    </div>
+
+    <div class="panel">
+      <p class="label">Quick facts</p>
+      <div class="fact-row"><span class="k">Netmask</span><span class="v" id="fMask">—</span></div>
+      <div class="fact-row"><span class="k">Wildcard</span><span class="v" id="fWildcard">—</span></div>
+      <div class="fact-row"><span class="k">Network</span><span class="v network" id="fNetwork">—</span></div>
+      <div class="fact-row"><span class="k">Broadcast</span><span class="v network" id="fBroadcast">—</span></div>
+      <div class="fact-row"><span class="k">First host</span><span class="v host" id="fFirst">—</span></div>
+      <div class="fact-row"><span class="k">Last host</span><span class="v host" id="fLast">—</span></div>
+      <div class="fact-row"><span class="k">Usable hosts</span><span class="v" id="fUsable">—</span></div>
+      <div class="fact-row"><span class="k">Total addresses</span><span class="v" id="fTotal">—</span></div>
+    </div>
+  </div>
+
+  <!-- MAIN COLUMN -->
+  <div class="main-col">
+
+    <div class="panel">
+      <div class="bitruler-head">
+        <p class="label">Bit ruler — click a bit to move the prefix</p>
+        <span class="hint" id="prefixHint">/24</span>
+      </div>
+      <div class="octets" id="octets"></div>
+      <div class="legend">
+        <span><span class="swatch network"></span>network bits</span>
+        <span><span class="swatch host"></span>host bits</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="blockmap-head">
+        <p class="label" style="margin:0;">Address block map</p>
+        <div class="split-control">
+          <span>split into</span>
+          <select id="splitSelect"></select>
+        </div>
+      </div>
+      <div class="blockmap" id="blockmap"></div>
+      <div class="blockmap-note" id="blockmapNote">Block width is proportional to address-space share. Click a block to inspect its range below.</div>
+    </div>
+
+    <div class="panel">
+      <p class="label">Range report</p>
+      <table>
+        <thead>
+          <tr><th>#</th><th>CIDR</th><th>Network</th><th>Broadcast</th><th>First — Last host</th><th>Usable</th></tr>
+        </thead>
+        <tbody id="reportBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <span>Mockup — values computed live, no backend, nothing persisted</span>
+  <span id="clock"></span>
+</footer>
+
+<script>
+// ---------- IPv4 helpers ----------
+function ipToInt(ip){
+  const p = ip.split('.').map(Number);
+  return ((p[0]<<24) >>> 0) + (p[1]<<16) + (p[2]<<8) + p[3];
+}
+function intToIp(int){
+  return [(int>>>24)&255,(int>>>16)&255,(int>>>8)&255,int&255].join('.');
+}
+function maskFromPrefix(prefix){
+  return prefix===0 ? 0 : (0xFFFFFFFF << (32-prefix)) >>> 0;
+}
+function parseCIDR(str){
+  const m = str.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if(!m) return null;
+  const octs = m.slice(1,5).map(Number);
+  const prefix = Number(m[5]);
+  if(octs.some(o=>o<0||o>255) || prefix<0 || prefix>32) return null;
+  return { ip: octs.join('.'), prefix };
+}
+function subnetInfo(ip, prefix){
+  const ipInt = ipToInt(ip);
+  const mask = maskFromPrefix(prefix);
+  const network = (ipInt & mask) >>> 0;
+  const broadcast = (network | (~mask >>> 0)) >>> 0;
+  const total = Math.pow(2, 32-prefix);
+  let first, last, usable;
+  if(prefix>=31){ first=network; last=broadcast; usable = prefix===32?1:2; }
+  else { first=network+1; last=broadcast-1; usable=total-2; }
+  return {
+    network: intToIp(network), networkInt: network,
+    broadcast: intToIp(broadcast), broadcastInt: broadcast,
+    mask: intToIp(mask),
+    wildcard: intToIp(~mask>>>0),
+    first: intToIp(first), last: intToIp(last),
+    usable, total, prefix
+  };
+}
+
+// ---------- state ----------
+let state = { ip:'192.168.1.0', prefix:24, splitPrefix:null, selectedBlock:0 };
+
+const cidrInput = document.getElementById('cidrInput');
+const cidrHint = document.getElementById('cidrHint');
+const prefixButtons = document.getElementById('prefixButtons');
+const octetsEl = document.getElementById('octets');
+const prefixHint = document.getElementById('prefixHint');
+const splitSelect = document.getElementById('splitSelect');
+const blockmap = document.getElementById('blockmap');
+const blockmapNote = document.getElementById('blockmapNote');
+const reportBody = document.getElementById('reportBody');
+
+const COMMON_PREFIXES = [8,16,20,24,25,26,27,28,30];
+
+function setFromInput(str, opts={}){
+  const parsed = parseCIDR(str);
+  if(!parsed){
+    cidrInput.classList.add('invalid');
+    cidrHint.textContent = 'Not a valid CIDR — expected A.B.C.D/prefix';
+    cidrHint.classList.add('error');
+    return false;
+  }
+  cidrInput.classList.remove('invalid');
+  cidrHint.classList.remove('error');
+  cidrHint.textContent = 'Looks good';
+  state.ip = parsed.ip;
+  state.prefix = parsed.prefix;
+  if(!opts.keepSplit){ state.splitPrefix = null; state.selectedBlock = 0; }
+  render();
+  return true;
+}
+
+cidrInput.addEventListener('input', ()=> setFromInput(cidrInput.value));
+
+function renderPrefixButtons(){
+  prefixButtons.innerHTML = '';
+  COMMON_PREFIXES.forEach(p=>{
+    const b = document.createElement('button');
+    b.textContent = '/'+p;
+    if(p===state.prefix) b.classList.add('active');
+    b.onclick = ()=>{
+      state.prefix = p;
+      state.splitPrefix = null; state.selectedBlock = 0;
+      cidrInput.value = state.ip+'/'+p;
+      cidrInput.classList.remove('invalid'); cidrHint.classList.remove('error'); cidrHint.textContent='Looks good';
+      render();
+    };
+    prefixButtons.appendChild(b);
+  });
+}
+
+function renderBitRuler(){
+  octetsEl.innerHTML = '';
+  const ipInt = ipToInt(state.ip);
+  for(let o=0;o<4;o++){
+    const wrap = document.createElement('div');
+    wrap.className = 'octet';
+    const lbl = document.createElement('div');
+    lbl.className = 'octet-label';
+    lbl.textContent = ['1st','2nd','3rd','4th'][o]+' octet';
+    wrap.appendChild(lbl);
+    const row = document.createElement('div');
+    row.className = 'bits';
+    for(let b=0;b<8;b++){
+      const bitIndex = o*8+b; // 0..31
+      const bitVal = (ipInt >>> (31-bitIndex)) & 1;
+      const cell = document.createElement('div');
+      cell.className = 'bit' + (bitIndex < state.prefix ? ' network':'');
+      if(bitIndex === state.prefix-1) cell.classList.add('boundary');
+      cell.textContent = bitVal;
+      cell.title = 'bit '+(bitIndex+1)+' — click to set prefix to /'+(bitIndex+1);
+      cell.onclick = ()=>{
+        state.prefix = bitIndex+1;
+        state.splitPrefix = null; state.selectedBlock = 0;
+        cidrInput.value = state.ip+'/'+state.prefix;
+        render();
+      };
+      row.appendChild(cell);
+    }
+    wrap.appendChild(row);
+    octetsEl.appendChild(wrap);
+  }
+  prefixHint.textContent = '/'+state.prefix;
+}
+
+function renderSplitSelect(){
+  splitSelect.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = ''; none.textContent = 'none';
+  splitSelect.appendChild(none);
+  for(let p=state.prefix+1; p<=Math.min(state.prefix+6,30); p++){
+    const opt = document.createElement('option');
+    opt.value = p;
+    const count = Math.pow(2, p-state.prefix);
+    opt.textContent = '/'+p+'  ('+count+' subnets)';
+    splitSelect.appendChild(opt);
+  }
+  splitSelect.value = state.splitPrefix || '';
+  splitSelect.onchange = ()=>{
+    state.splitPrefix = splitSelect.value ? Number(splitSelect.value) : null;
+    state.selectedBlock = 0;
+    render();
+  };
+}
+
+function getBlocks(){
+  const base = subnetInfo(state.ip, state.prefix);
+  if(!state.splitPrefix) return [base];
+  const count = Math.pow(2, state.splitPrefix - state.prefix);
+  const step = Math.pow(2, 32-state.splitPrefix);
+  const blocks = [];
+  for(let i=0;i<count;i++){
+    const netInt = base.networkInt + i*step;
+    blocks.push(subnetInfo(intToIp(netInt), state.splitPrefix));
+  }
+  return blocks;
+}
+
+function renderBlockMap(){
+  const blocks = getBlocks();
+  blockmap.innerHTML = '';
+  blocks.forEach((blk, i)=>{
+    const el = document.createElement('div');
+    el.className = 'block' + (i===state.selectedBlock ? ' selected':'');
+    el.innerHTML = `<div class="bnum">${blk.network}</div><div>/${blk.prefix}</div>`;
+    el.title = `${blk.network}/${blk.prefix} — ${blk.usable} usable`;
+    el.onclick = ()=>{ state.selectedBlock = i; render(); };
+    blockmap.appendChild(el);
+  });
+  blockmapNote.textContent = blocks.length===1
+    ? 'Single block — choose a split prefix above to divide this network into smaller allocations.'
+    : `${blocks.length} blocks of /${state.splitPrefix}, ${blocks[0].usable} usable hosts each. Click a block to inspect it.`;
+}
+
+function renderReport(){
+  const blocks = getBlocks();
+  reportBody.innerHTML = '';
+  blocks.forEach((blk,i)=>{
+    const tr = document.createElement('tr');
+    if(i===state.selectedBlock) tr.classList.add('selected');
+    tr.onclick = ()=>{ state.selectedBlock = i; render(); };
+    tr.innerHTML = `
+      <td class="idx">${i+1}</td>
+      <td>${blk.network}/${blk.prefix}</td>
+      <td>${blk.network}</td>
+      <td>${blk.broadcast}</td>
+      <td>${blk.first} – ${blk.last}</td>
+      <td class="usable">${blk.usable.toLocaleString()}</td>`;
+    reportBody.appendChild(tr);
+  });
+}
+
+function renderFacts(){
+  const blocks = getBlocks();
+  const sel = blocks[state.selectedBlock] || blocks[0];
+  document.getElementById('fMask').textContent = sel.mask;
+  document.getElementById('fWildcard').textContent = sel.wildcard;
+  document.getElementById('fNetwork').textContent = sel.network;
+  document.getElementById('fBroadcast').textContent = sel.broadcast;
+  document.getElementById('fFirst').textContent = sel.first;
+  document.getElementById('fLast').textContent = sel.last;
+  document.getElementById('fUsable').textContent = sel.usable.toLocaleString();
+  document.getElementById('fTotal').textContent = sel.total.toLocaleString();
+}
+
+function render(){
+  renderPrefixButtons();
+  renderBitRuler();
+  renderSplitSelect();
+  renderBlockMap();
+  renderReport();
+  renderFacts();
+}
+
+render();
+
+function tickClock(){
+  document.getElementById('clock').textContent = new Date().toString().slice(0,24);
+}
+tickClock(); setInterval(tickClock, 1000);
+</script>
+</body>
+</html>
