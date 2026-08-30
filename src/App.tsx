@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-
+import { SubnetStudioConfig } from './config/SubnetStudioConfig';
 function useClock() {
   const [time, setTime] = useState(() => new Date().toString().slice(0, 24));
   useEffect(() => {
@@ -312,7 +312,7 @@ const App = () => {
         </div>
 
         <footer>
-          <span>Runs entirely in your browser — nothing is sent or stored</span>
+          <span>{`// v${SubnetStudioConfig.version}`} {SubnetStudioConfig.stable && `// (stable: v${SubnetStudioConfig.stable})`}</span>
           <div className="footer-right">
             <a
               className="footer-gh"

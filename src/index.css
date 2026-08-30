@@ -58,14 +58,21 @@ body{
 /* ── HEADER ─────────────────────────────────────────────── */
 header{
   display:flex;
-  align-items:baseline;
+  align-items:center;
   justify-content:space-between;
   max-width:1180px;
   margin:0 auto 22px;
   padding-bottom:16px;
   border-bottom:1px solid var(--grid);
 }
-header .brand{display:flex; align-items:baseline; gap:10px;}
+header .brand{display:flex; align-items:center; gap:10px;}
+header .brand #subnet-studio-logo img{
+	height: 100%;
+	width: auto;
+	max-height: 64px;
+	margin: auto;
+	filter: drop-shadow(0 12px 30px #ffffffaf) drop-shadow(0 0 10px var(--network)) ;
+}
 header h1{
   font-size:18px;
   font-weight:600;
@@ -977,11 +984,12 @@ footer{
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color .15s ease, color .15s ease, transform .15s ease;
+  transition: border-color .15s ease, color .15s ease, transform .15s ease, border-radius .15s ease;
   flex-shrink: 0;
 }
 .header-settings-btn:hover{
   border-color: var(--network);
+  border-radius: 50%;
   color: var(--network);
   transform: rotate(30deg);
 }

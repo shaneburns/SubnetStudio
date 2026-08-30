@@ -9,8 +9,8 @@ interface HeaderProps {
 export const Header = ({ mode, setMode, onOpenSettings }: HeaderProps) => (
 	<header>
 		<div className="brand">
+			<span id="subnet-studio-logo" role="img" aria-label="Subnet Studio Logo"><img src="/logo-transparent.svg" alt="Subnet Studio Logo" /></span>
 			<h1>Subnet<span className="accent">Studio</span></h1>
-			<span className="tagline">// v0.0.1a</span>
 		</div>
 
 		<div className="header-right">

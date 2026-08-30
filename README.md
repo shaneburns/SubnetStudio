@@ -1,6 +1,6 @@
 # SubnetStudio
 
-> **⚠️ Alpha Software — v0.0.1a**
+> **⚠️ Alpha Software — v0.0.1a-1**
 >
 > SubnetStudio is in early alpha. Bugs are likely. If you run into anything
 > unexpected, please **[open an issue](https://github.com/shaneburns/SubnetStudio/issues)**
@@ -92,6 +92,7 @@ npm test
 
 ```
 src/
+├── config/           SubnetStudioConfig (version info, etc.)
 ├── components/
 │   ├── Background/   BitNoise animated canvas
 │   ├── Display/      BitRuler, BlockMap, QuickFacts, RangeReport
@@ -107,24 +108,3 @@ src/
 
 ---
 
-## Deployment
-
-SubnetStudio is deployed as part of the
-[internal-ops-deploy](https://github.com/shaneburns/internal-ops-deploy) stack.
-The production Docker image is a two-stage build: Node 22 compiles the Vite
-project, then nginx:alpine serves the static output.
-
-To deploy an update once the droplet is configured:
-
-```bash
-cd ~/sites/internal-ops-deploy
-./scripts/deploy.sh subnetstudio
-```
-
----
-
-## Version History
-
-| Version | Notes |
-|---|---|
-| `v0.0.1a` | Initial alpha release |
