@@ -7,11 +7,9 @@ interface VlsmRowProps {
 	allocation?: Allocation;
 	updateRequest: (id: string, updates: Partial<AllocationRequest>) => void;
 	removeRequest: (id: string) => void;
-	onDragStart: (id: string) => void;
-	onDrop: (targetId: string) => void;
 }
 
-export const VlsmRow = ({ req, allocation, updateRequest, removeRequest, onDragStart, onDrop }: VlsmRowProps) => {
+export const VlsmRow = ({ req, allocation, updateRequest, removeRequest }: VlsmRowProps) => {
 	const isOverflow = allocation?.status === 'overflow';
 
 	const allocationLabel = () => {
@@ -26,15 +24,7 @@ export const VlsmRow = ({ req, allocation, updateRequest, removeRequest, onDragS
 	};
 
 	return (
-		<div
-			className="vlsm-row"
-			draggable
-			onDragStart={() => onDragStart(req.id)}
-			onDragOver={(e) => e.preventDefault()}
-			onDrop={(e) => { e.preventDefault(); onDrop(req.id); }}
-		>
-			<span className="drag-handle" title="Drag to reorder">⋮⋮</span>
-
+		<div className="vlsm-row">
 			<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
 				<input
 					value={req.name}

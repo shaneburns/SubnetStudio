@@ -36,6 +36,24 @@ export type UnallocatedRange = {
   coverPrefix: number;
 };
 
+/**
+ * Returns the smallest CIDR prefix that can cover `total` IPv4 addresses.
+ *
+ * `total` is treated as an exact address count, not usable hosts. The result is
+ * conservative for non-power-of-two totals and exact for power-of-two totals.
+ */
+export function coverPrefixForAddressCount(total: number): number {
+  if (total <= 1) return 32;
+  const bitsNeeded = Math.ceil(Math.log2(total));
+  return Math.max(0, 32 - bitsNeeded);
+}
+
+/**
+ * Allocates VLSM requests using a largest-first packing strategy.
+ *
+ * Request list order does not affect the packed result because requests are
+ * sorted by `hostsNeeded` descending before placement.
+ */
 export function allocateVLSM(
   baseNetwork: { ip: string; prefix: number },
   requests: AllocationRequest[],
@@ -126,11 +144,7 @@ export function allocateVLSM(
   let unallocated: UnallocatedRange | null = null;
   if (currentInt <= baseEnd) {
     const total = baseEnd - currentInt + 1;
-    // Compute the smallest prefix that fully covers [currentInt, baseEnd].
-    // We want the largest power-of-2 that is >= total and where currentInt
-    // is aligned to that boundary.  A simple conservative upper bound:
-    const bitsNeeded = Math.ceil(Math.log2(total + 1));
-    const coverPrefix = Math.max(0, 32 - bitsNeeded);
+    const coverPrefix = coverPrefixForAddressCount(total);
     unallocated = {
       firstAddr:   intToIp(currentInt),
       firstInt:    currentInt,

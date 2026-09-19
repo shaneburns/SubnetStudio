@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { subnetInfo, parseCIDR } from './ipv4';
-import { allocateVLSM } from './vlsm';
+import { allocateVLSM, coverPrefixForAddressCount } from './vlsm';
 
 describe('IPv4 Domain Logic', () => {
 	it('correctly parses valid CIDR', () => {
@@ -56,5 +56,26 @@ describe('VLSM Allocation Logic', () => {
 		];
 		const { allocations } = allocateVLSM(base, requests);
 		expect(allocations[0].status).toBe('overflow');
+	});
+
+	it('computes the smallest covering prefix for exact remainder sizes', () => {
+		expect(coverPrefixForAddressCount(1)).toBe(32);
+		expect(coverPrefixForAddressCount(2)).toBe(31);
+		expect(coverPrefixForAddressCount(4)).toBe(30);
+		expect(coverPrefixForAddressCount(8)).toBe(29);
+		expect(coverPrefixForAddressCount(16)).toBe(28);
+	});
+
+	it('reports the tightest covering prefix for the unallocated remainder', () => {
+		const base = { ip: '10.0.0.0', prefix: 24 };
+		const requests = [
+			{ id: '1', name: 'Large', hostsNeeded: 100, order: 0 },
+		];
+		const { unallocated } = allocateVLSM(base, requests);
+		expect(unallocated).not.toBeNull();
+		expect(unallocated?.total).toBe(128);
+		expect(unallocated?.coverPrefix).toBe(25);
+		expect(unallocated?.firstAddr).toBe('10.0.0.128');
+		expect(unallocated?.lastAddr).toBe('10.0.0.255');
 	});
 });

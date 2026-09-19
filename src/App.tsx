@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SubnetStudioConfig } from './config/SubnetStudioConfig';
 function useClock() {
   const [time, setTime] = useState(() => new Date().toString().slice(0, 24));
@@ -11,6 +11,7 @@ function useClock() {
 
 import { useNetworkState } from './state/useNetworkState';
 import { useTheme } from './state/useTheme';
+import { AutomationHealthResponse, AutomationInterpretRequest, AutomationInterpretResponse } from './types/automation';
 import {
   subnetInfo,
   intToIp,
@@ -28,6 +29,7 @@ import { RangeReport } from './components/Display/RangeReport';
 import { VlsmRow } from './components/Vlsm/VlsmRow';
 import { BitNoise } from './components/Background/BitNoise';
 import { SettingsModal } from './components/Settings/SettingsModal';
+import { AutomationPanel } from './components/Automation/AutomationPanel';
 import './index.css';
 
 // ── Extended block shape used by visual components ──────────────────────────
@@ -45,9 +47,9 @@ const App = () => {
     updateEqualSplit,
     addVlsmRequest,
     removeVlsmRequest,
-    reorderVlsmRequests,
     updateVlsmRequest,
     setSelectedBlockIdx,
+    applyAutomationPlan,
   } = useNetworkState();
 
   const clock = useClock();
@@ -58,11 +60,87 @@ const App = () => {
   // ── Settings modal ─────────────────────────────────────────────────────────
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Tracks which VLSM row is being dragged so the drop handler knows both IDs
-  const dragSourceId = useRef<string | null>(null);
-
   // ── VLSM search ─────────────────────────────────────────────────────────
   const [vlsmSearch, setVlsmSearch] = useState('');
+
+  // ── Automation ───────────────────────────────────────────────────────────
+  const [automationVisible, setAutomationVisible] = useState(false);
+  const [automationPrompt, setAutomationPrompt] = useState('');
+  const [automationBusy, setAutomationBusy] = useState(false);
+  const [automationHealth, setAutomationHealth] = useState<AutomationHealthResponse | null>(null);
+  const [automationResponse, setAutomationResponse] = useState<AutomationInterpretResponse | null>(null);
+  const [automationNotice, setAutomationNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadAutomationHealth = async () => {
+      try {
+        const response = await fetch('/api/automation/health');
+        if (!response.ok) throw new Error(`health check failed (${response.status})`);
+        const payload = await response.json() as AutomationHealthResponse;
+        if (active) setAutomationHealth(payload);
+      } catch {
+        if (active) {
+          setAutomationHealth(null);
+          setAutomationNotice('Automation backend unavailable — core subnetting still works fully offline.');
+        }
+      }
+    };
+
+    void loadAutomationHealth();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const runAutomationPrompt = async () => {
+    if (!automationPrompt.trim() || automationBusy) return;
+    setAutomationBusy(true);
+    setAutomationNotice(null);
+
+    try {
+      const payload: AutomationInterpretRequest = {
+        prompt: automationPrompt.trim(),
+        workspace: {
+          baseCidr: `${state.base.ip}/${state.base.prefix}`,
+          basePrefix: state.base.prefix,
+          mode: state.mode,
+          equalSplitPrefix: state.equalSplitPrefix,
+        },
+      };
+      const response = await fetch('/api/automation/interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json() as AutomationInterpretResponse;
+      setAutomationResponse(body);
+      if (!response.ok && body.message) {
+        setAutomationNotice(body.message);
+      }
+    } catch (error) {
+      setAutomationResponse(null);
+      setAutomationNotice(error instanceof Error ? error.message : 'Automation request failed.');
+    } finally {
+      setAutomationBusy(false);
+    }
+  };
+
+  const applyAutomationResponse = () => {
+    if (!automationResponse?.plan) return;
+    const result = applyAutomationPlan(automationResponse.plan);
+    setAutomationNotice(result.message);
+    if (result.ok) {
+      setAutomationPrompt('');
+      setAutomationResponse(null);
+    }
+  };
+
+  const clearAutomationResult = () => {
+    setAutomationResponse(null);
+    setAutomationNotice(null);
+  };
 
   // ── VLSM allocation (only in vlsm mode) ─────────────────────────────────
   const { allocations, unallocated } = React.useMemo(() => {
@@ -189,8 +267,24 @@ const App = () => {
         <Header
           mode={state.mode}
           setMode={updateMode}
+          automationVisible={automationVisible}
+          onToggleAutomation={() => setAutomationVisible(visible => !visible)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+
+        {automationVisible && (
+          <AutomationPanel
+            prompt={automationPrompt}
+            response={automationResponse}
+            health={automationHealth}
+            busy={automationBusy}
+            notice={automationNotice}
+            onPromptChange={setAutomationPrompt}
+            onSubmit={() => { void runAutomationPrompt(); }}
+            onApply={applyAutomationResponse}
+            onClear={clearAutomationResult}
+          />
+        )}
 
         <div className="layout">
           {/* ── LEFT RAIL ── */}
@@ -241,7 +335,10 @@ const App = () => {
 
                 <div className="vlsm-editor">
                   <div className="vlsm-sorted-indicator">
-                    Auto-sorted by size (largest first) — drag rows to reorder
+                    Allocation is always packed largest-first by host count.
+                    <span style={{ color: 'var(--muted-2)', marginLeft: '8px' }}>
+                      Row order is for editing only and does not change allocation results.
+                    </span>
                     {vlsmSearch && (
                       <span style={{ color: 'var(--network)', marginLeft: '8px' }}>
                         · {filteredVlsmRequests.length} of {state.vlsmRequests.length} shown
@@ -272,13 +369,6 @@ const App = () => {
                       allocation={allocationById.get(req.id)}
                       updateRequest={updateVlsmRequest}
                       removeRequest={removeVlsmRequest}
-                      onDragStart={(id) => { dragSourceId.current = id; }}
-                      onDrop={(targetId) => {
-                        if (dragSourceId.current && dragSourceId.current !== targetId) {
-                          reorderVlsmRequests(dragSourceId.current, targetId);
-                        }
-                        dragSourceId.current = null;
-                      }}
                     />
                   ))}
 
