@@ -3,6 +3,14 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api/automation': {
+        target: process.env.VITE_AUTOMATION_PROXY_TARGET ?? 'http://localhost:8787',
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -10,7 +18,7 @@ export default defineConfig({
       manifest: {
         name: 'Subnet Studio',
         short_name: 'SubnetStudio',
-        description: 'Visual IPv4 subnetting tool — v0.0.1a',
+        description: 'Visual IPv4 subnetting tool',
         theme_color: '#0B1E2D',
         icons: [
           {

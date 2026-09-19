@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { parseCIDR, classifyAddress } from '../../domain/ipv4';
+import { NETWORK_PREFIX_BUTTONS } from '../../lib/prefixOptions';
 
 interface CidrInputProps {
 	base: { ip: string; prefix: number };
 	updateBase: (ip: string, prefix: number) => void;
 }
-
-const COMMON_PREFIXES = [8, 16, 20, 24, 25, 26, 27, 28, 30];
 
 export const CidrInput = ({ base, updateBase }: CidrInputProps) => {
 	const [val, setVal]       = useState(`${base.ip}/${base.prefix}`);
@@ -47,7 +46,7 @@ export const CidrInput = ({ base, updateBase }: CidrInputProps) => {
 			</div>
 
 			<div className="prefix-buttons">
-				{COMMON_PREFIXES.map(p => (
+				{NETWORK_PREFIX_BUTTONS.map(p => (
 					<button
 						key={p}
 						className={`prefix-btn${p === base.prefix ? ' active' : ''}`}

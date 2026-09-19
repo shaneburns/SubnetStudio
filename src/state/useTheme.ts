@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ThemeId, getTheme, DEFAULT_THEME_ID } from '../themes/themes';
+import { ThemeId, ThemeDef, getTheme, DEFAULT_THEME_ID } from '../themes/themes';
 
 const STORAGE_KEY = 'subnetstudio-theme';
 

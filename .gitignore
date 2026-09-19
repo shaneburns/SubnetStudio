@@ -27,3 +27,6 @@ Thumbs.db
 
 # Zone identifiers (Windows WSL artifacts)
 *.Identifier
+
+# ADLC control directory (agent workflow state)
+.adlc/
