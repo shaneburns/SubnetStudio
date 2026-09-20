@@ -127,6 +127,13 @@ export const RangeReport = ({ blocks, selectedIdx, onSelect, mode }: RangeReport
     [blocks, exclUnalloc]
   );
 
+  useEffect(() => {
+    setExportOpen(false);
+    setExportFmt('csv');
+    setExclUnalloc(false);
+    setSelectedRows(new Set());
+  }, [mode]);
+
   const allSelected = exportableBlocks.length > 0 &&
     exportableBlocks.every(({ i }) => selectedRows.has(i));
 
@@ -195,18 +202,16 @@ export const RangeReport = ({ blocks, selectedIdx, onSelect, mode }: RangeReport
               <button className="rr-search-clear" onClick={() => setSearch('')} title="Clear filter">×</button>
             )}
           </div>
-          {isVLSM && (
-            <button
-              className={`btn rr-export-btn${exportOpen ? ' active' : ''}`}
-              onClick={() => setExportOpen(o => !o)}
-              title="Export report"
-            >↓ Export</button>
-          )}
+          <button
+            className={`btn rr-export-btn${exportOpen ? ' active' : ''}`}
+            onClick={() => setExportOpen(o => !o)}
+            title="Export report"
+          >↓ Export</button>
         </div>
       </div>
 
       {/* ── Export panel ── */}
-      {exportOpen && isVLSM && (
+      {exportOpen && (
         <div className="rr-export-panel">
           <div className="rr-export-row">
             <label className="rr-export-label">Format</label>
@@ -214,10 +219,12 @@ export const RangeReport = ({ blocks, selectedIdx, onSelect, mode }: RangeReport
               <button className={`btn rr-fmt-btn${exportFmt === 'csv'  ? ' active' : ''}`} onClick={() => setExportFmt('csv')}>CSV</button>
               <button className={`btn rr-fmt-btn${exportFmt === 'json' ? ' active' : ''}`} onClick={() => setExportFmt('json')}>JSON</button>
             </div>
-            <label className="rr-export-check">
-              <input type="checkbox" checked={exclUnalloc} onChange={e => setExclUnalloc(e.target.checked)} />
-              Exclude unallocated
-            </label>
+            {isVLSM && (
+              <label className="rr-export-check">
+                <input type="checkbox" checked={exclUnalloc} onChange={e => setExclUnalloc(e.target.checked)} />
+                Exclude unallocated
+              </label>
+            )}
             <label className="rr-export-check">
               <input type="checkbox" checked={allSelected} onChange={toggleAll} />
               {allSelected ? 'Deselect all' : 'Select all'}
@@ -230,21 +237,29 @@ export const RangeReport = ({ blocks, selectedIdx, onSelect, mode }: RangeReport
             >↓ Download ({selectedRows.size})</button>
           </div>
 
-          <div className="rr-export-list">
-            {exportableBlocks.map(({ b, i }) => (
-              <label key={i} className="rr-export-item">
-                <input type="checkbox" checked={selectedRows.has(i)} onChange={() => toggleRow(i)} />
-                <span className="mono rr-export-item__cidr">
-                  {b.isRemainder
-                    ? <span style={{ color: 'var(--muted-2)' }}>{b.network} – {b.broadcast}</span>
-                    : <CidrHighlight value={`${b.network}/${b.prefix}`} />
-                  }
-                </span>
-                {b.name && <span className="rr-export-item__name">{b.name}</span>}
-                {b.isRemainder && <span className="rr-export-item__tag">unalloc.</span>}
-              </label>
-            ))}
-          </div>
+          {!isVLSM && (
+            <div className="rr-export-note mono">
+              Equal-split exports include the full report only. Use Select all or Deselect all to export everything or nothing.
+            </div>
+          )}
+
+          {isVLSM && (
+            <div className="rr-export-list">
+              {exportableBlocks.map(({ b, i }) => (
+                <label key={i} className="rr-export-item">
+                  <input type="checkbox" checked={selectedRows.has(i)} onChange={() => toggleRow(i)} />
+                  <span className="mono rr-export-item__cidr">
+                    {b.isRemainder
+                      ? <span style={{ color: 'var(--muted-2)' }}>{b.network} – {b.broadcast}</span>
+                      : <CidrHighlight value={`${b.network}/${b.prefix}`} />
+                    }
+                  </span>
+                  {b.name && <span className="rr-export-item__name">{b.name}</span>}
+                  {b.isRemainder && <span className="rr-export-item__tag">unalloc.</span>}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

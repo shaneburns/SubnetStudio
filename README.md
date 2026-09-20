@@ -1,6 +1,6 @@
 # SubnetStudio
 
-> **⚠️ Alpha Software — v0.0.1a-1**
+> **⚠️ Alpha Software — v0.0.2a**
 >
 > SubnetStudio is in early alpha. Bugs are likely. If you run into anything
 > unexpected, please **[open an issue](https://github.com/shaneburns/SubnetStudio/issues)**
@@ -14,8 +14,12 @@
 ---
 
 A visual-first IPv4 subnetting tool designed for learning and planning network
-address spaces. Built as a fully client-side PWA — nothing is sent or stored,
-everything runs in the browser.
+address spaces. Core subnet math and visualization remain deterministic and
+browser-first.
+
+Most of the app still runs fully client-side, but this branch also adds an
+**optional automation backend** for TypeSafe-powered natural-language commands.
+Nothing is sent off-device unless you explicitly use the automation feature.
 
 **Live:** [subnetstudio.infispect.com](https://subnetstudio.infispect.com)
 **Issues / Feedback:** [github.com/shaneburns/SubnetStudio/issues](https://github.com/shaneburns/SubnetStudio/issues)
@@ -27,7 +31,7 @@ everything runs in the browser.
 - **Equal-Split mode** — divide any base network into equal-sized subnets with
   common-prefix shortcuts and a live block visualizer
 - **VLSM mode** — auto-allocate the smallest fitting subnet per named segment;
-  drag-to-reorder, overflow detection, single unallocated remainder block
+  largest-first packing, overflow detection, single unallocated remainder block
 - **Bit Ruler** — 32-bit visual breakdown with three-state VLSM colouring
   (base-fixed / borrowed / host) and click-to-set-prefix
 - **Address Block Map** — proportional bar view (≤32 blocks) and compact tile
@@ -39,6 +43,8 @@ everything runs in the browser.
 - **BitNoise background** — Perlin-noise-driven animated bit grid that adapts
   to the active theme palette
 - **PWA** — installable, works fully offline after first load
+- **Automation command bar** — optional cloud-assisted natural-language command
+  entry with confidence-scored previews before apply
 
 ---
 
@@ -51,6 +57,7 @@ everything runs in the browser.
 | Styling | Custom CSS design tokens |
 | PWA | `vite-plugin-pwa` |
 | Tests | Vitest |
+| Optional automation backend | Node.js + TypeScript companion service |
 | Serving (prod) | nginx:alpine (via multi-stage Docker build) |
 | Proxy / TLS | Caddy (automatic Let's Encrypt) |
 
@@ -62,16 +69,53 @@ everything runs in the browser.
 - Node.js v18 or newer
 - npm
 
-### Install & run
+### Install
 
 ```bash
 git clone https://github.com/shaneburns/SubnetStudio.git
 cd SubnetStudio
 npm install
+```
+
+### Run the core app only
+
+```bash
 npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
+
+### Run the automation backend too
+
+Copy the example env file and add your TypeSafe key:
+
+```bash
+cp .env.example .env.local
+```
+
+The backend automatically loads `.env` first and then `.env.local` (with `.env.local`
+winning if both define the same variable). By default it binds to `127.0.0.1` and only
+allows browser origins from the local Vite dev server. Leave `NODE_ENV` unset (or set it
+to `development`) for verbose client-facing diagnostics while developing; set it to
+`production` to redact provider/config details from client responses. Set
+`AUTOMATION_SERVER_HOST` and `AUTOMATION_ALLOWED_ORIGINS` explicitly if you deploy it
+behind another origin.
+
+Then either run both services together:
+
+```bash
+npm run dev:full
+```
+
+Or run them separately:
+
+```bash
+npm run backend:dev
+npm run dev
+```
+
+The frontend uses `/api/automation/*` in development and Vite proxies that to the
+local backend service.
 
 ### Production build
 
@@ -84,9 +128,28 @@ npm run preview    # serve the built output locally
 
 ```bash
 npm test
+npm run typecheck
 ```
 
 ---
+
+## Automation Notes
+
+- The automation feature is **optional**.
+- Core subnetting continues to work without the backend.
+- When you use the command bar, your prompt is sent to the local backend and,
+  if configured, onward to the TypeSafe endpoint defined by `TYPESAFE_API_URL`.
+- `TYPESAFE_API_KEY` is read **server-side only** and is never exposed to the
+  React client.
+- The automation companion binds to localhost by default and restricts direct
+  browser access to configured origins. Configure `AUTOMATION_SERVER_HOST` and
+  `AUTOMATION_ALLOWED_ORIGINS` before exposing it anywhere beyond local dev.
+- In development, the backend returns verbose error/config details to help with
+  debugging. In production, it redacts upstream/provider details from health and
+  error responses while logging full server-side diagnostics.
+- The current automation slice is intentionally narrow: mode changes, base CIDR
+  updates, equal-split prefix changes (including requests such as “at least 5
+  subnets”), and simple VLSM request upserts/batches.
 
 ## Project Structure
 

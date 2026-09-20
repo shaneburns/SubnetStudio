@@ -1,0 +1,61 @@
+import { config as loadEnv } from 'dotenv';
+
+loadEnv({ path: '.env' });
+loadEnv({ path: '.env.local', override: true });
+
+const DEFAULT_PORT = 8787;
+const DEFAULT_HOST = '127.0.0.1';
+const DEFAULT_MODEL = 'jev-latest';
+const DEFAULT_TYPESAFE_API_URL = 'https://api.typesafe.ai/v1/systemone';
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+/** Returns whether the backend should expose verbose diagnostics to clients. */
+export function isDevelopment(): boolean {
+  return process.env.NODE_ENV !== 'production';
+}
+
+/** Returns the local port used by the automation companion service. */
+export function getPort(): number {
+  const raw = process.env.AUTOMATION_SERVER_PORT;
+  const parsed = raw ? Number(raw) : DEFAULT_PORT;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PORT;
+}
+
+/** Returns the bind host used by the automation companion service. */
+export function getHost(): string {
+  return process.env.AUTOMATION_SERVER_HOST?.trim() || DEFAULT_HOST;
+}
+
+/** Returns browser origins allowed to call the automation companion service directly. */
+export function getAllowedOrigins(): string[] {
+  const raw = process.env.AUTOMATION_ALLOWED_ORIGINS?.trim();
+  if (!raw) return DEFAULT_ALLOWED_ORIGINS;
+
+  return raw
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(origin => origin.length > 0 && origin !== '*');
+}
+
+/** Returns the TypeSafe model name requested by the backend. */
+export function getModel(): string {
+  return process.env.TYPESAFE_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+/** Returns the TypeSafe API URL or an internal router override. */
+export function getTypeSafeApiUrl(): string {
+  return process.env.TYPESAFE_API_URL?.trim() || DEFAULT_TYPESAFE_API_URL;
+}
+
+/** Returns the server-side TypeSafe API key if configured. */
+export function getTypeSafeApiKey(): string {
+  return process.env.TYPESAFE_API_KEY?.trim() || '';
+}
+
+/** Reports whether the backend has enough config to contact TypeSafe. */
+export function isTypeSafeConfigured(): boolean {
+  return Boolean(getTypeSafeApiKey());
+}
