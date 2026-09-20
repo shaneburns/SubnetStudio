@@ -71,6 +71,31 @@ describe('AutomationPanel', () => {
 		expect(screen.getByText(/confirmation required/i)).toBeTruthy();
 	});
 
+	it('avoids repeating the same interpretation text in multiple spots', () => {
+		const response: AutomationInterpretResponse = {
+			ok: true,
+			provider: 'typesafe',
+			configured: true,
+			status: 'ready',
+			message: 'set base network to 10.0.0.0/24 → set equal split to /26',
+			supportedIntents: baseHealth.supportedIntents,
+			plan: {
+				summary: 'set base network to 10.0.0.0/24 → set equal split to /26',
+				confidence: 0.96,
+				requiresConfirmation: true,
+				actions: [
+					{ intent: 'set-base-cidr', cidr: '10.0.0.0/24' },
+					{ intent: 'set-equal-split-prefix', prefix: 26 },
+				],
+			},
+		};
+
+		renderPanel(response);
+		expect(screen.queryByText('set base network to 10.0.0.0/24 → set equal split to /26')).toBeNull();
+		expect(screen.getByText('Set base network to 10.0.0.0/24')).toBeTruthy();
+		expect(screen.getByText('Set equal split target to /26')).toBeTruthy();
+	});
+
 	it('fills the prompt when an example button is clicked', () => {
 		const onPromptChange = vi.fn();
 		render(
@@ -89,6 +114,29 @@ describe('AutomationPanel', () => {
 
 		fireEvent.click(screen.getByRole('button', { name: 'split this into at least 5 subnets' }));
 		expect(onPromptChange).toHaveBeenCalledWith('split this into at least 5 subnets');
+	});
+
+	it('hides a redundant summary when it matches the only action', () => {
+		const response: AutomationInterpretResponse = {
+			ok: true,
+			provider: 'typesafe',
+			configured: true,
+			status: 'ready',
+			message: 'The app can safely do this next.',
+			supportedIntents: baseHealth.supportedIntents,
+			plan: {
+				summary: 'Set mode to vlsm',
+				confidence: 0.94,
+				requiresConfirmation: false,
+				actions: [
+					{ intent: 'set-mode', mode: 'vlsm' },
+				],
+			},
+		};
+
+		renderPanel(response);
+		expect(screen.getByText('The app can safely do this next.')).toBeTruthy();
+		expect(screen.getAllByText('Set mode to vlsm')).toHaveLength(1);
 	});
 
 	it('disables apply for unsupported responses', () => {

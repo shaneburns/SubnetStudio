@@ -86,8 +86,8 @@ export interface AutomationHealthResponse {
   ok: true;
   provider: 'typesafe';
   configured: boolean;
-  model: string;
-  apiUrl: string;
+  model?: string;
+  apiUrl?: string;
   supportedIntents: AutomationIntent[];
 }
 
@@ -98,6 +98,7 @@ export interface AutomationInterpretResponse {
   configured: boolean;
   status: 'ready' | 'not-configured' | 'invalid-request' | 'error';
   message: string;
+  requestId?: string;
   supportedIntents: AutomationIntent[];
   plan: AutomationPlan | null;
 }

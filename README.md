@@ -94,7 +94,12 @@ cp .env.example .env.local
 ```
 
 The backend automatically loads `.env` first and then `.env.local` (with `.env.local`
-winning if both define the same variable).
+winning if both define the same variable). By default it binds to `127.0.0.1` and only
+allows browser origins from the local Vite dev server. Leave `NODE_ENV` unset (or set it
+to `development`) for verbose client-facing diagnostics while developing; set it to
+`production` to redact provider/config details from client responses. Set
+`AUTOMATION_SERVER_HOST` and `AUTOMATION_ALLOWED_ORIGINS` explicitly if you deploy it
+behind another origin.
 
 Then either run both services together:
 
@@ -136,6 +141,12 @@ npm run typecheck
   if configured, onward to the TypeSafe endpoint defined by `TYPESAFE_API_URL`.
 - `TYPESAFE_API_KEY` is read **server-side only** and is never exposed to the
   React client.
+- The automation companion binds to localhost by default and restricts direct
+  browser access to configured origins. Configure `AUTOMATION_SERVER_HOST` and
+  `AUTOMATION_ALLOWED_ORIGINS` before exposing it anywhere beyond local dev.
+- In development, the backend returns verbose error/config details to help with
+  debugging. In production, it redacts upstream/provider details from health and
+  error responses while logging full server-side diagnostics.
 - The current automation slice is intentionally narrow: mode changes, base CIDR
   updates, equal-split prefix changes (including requests such as “at least 5
   subnets”), and simple VLSM request upserts/batches.

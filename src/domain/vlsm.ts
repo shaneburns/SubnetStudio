@@ -24,15 +24,15 @@ export type Allocation = {
 
 // ── Unallocated remainder type ────────────────────────────────────────────────
 // Represents a single contiguous unallocated range.
-// `prefix` is the tightest CIDR that *covers* the range (may not be exact),
-// but firstAddr/lastAddr are the true boundaries and `total` is exact.
+// `coverPrefix` is the smallest CIDR prefix whose containing block covers the
+// entire range, even when the range itself is not CIDR-aligned.
 export type UnallocatedRange = {
-  firstAddr:  string;
-  firstInt:   number;
-  lastAddr:   string;
-  lastInt:    number;
-  total:      number;   // exact address count
-  /** Smallest prefix that covers the entire range (for display only) */
+  firstAddr: string;
+  firstInt: number;
+  lastAddr: string;
+  lastInt: number;
+  total: number;   // exact address count
+  /** Smallest prefix whose containing CIDR block covers the entire range. */
   coverPrefix: number;
 };
 
@@ -46,6 +46,12 @@ export function coverPrefixForAddressCount(total: number): number {
   if (total <= 1) return 32;
   const bitsNeeded = Math.ceil(Math.log2(total));
   return Math.max(0, 32 - bitsNeeded);
+}
+
+/** Returns the smallest CIDR prefix whose containing block covers `[startInt, endInt]`. */
+export function coverPrefixForRange(startInt: number, endInt: number): number {
+  if (endInt <= startInt) return 32;
+  return Math.clz32((startInt ^ endInt) >>> 0);
 }
 
 /**
@@ -65,7 +71,7 @@ export function allocateVLSM(
 
   const allocations: Allocation[] = [];
   let currentInt = base.networkInt;
-  const baseEnd  = base.broadcastInt;
+  const baseEnd = base.broadcastInt;
 
   for (const req of sortedRequests) {
     // Skip requests with no hosts needed — they haven't been filled in yet
@@ -125,14 +131,14 @@ export function allocateVLSM(
       id: req.id, name: req.name,
       requestedHosts: req.hostsNeeded,
       derivedPrefix: prefix,
-      mask:      info.mask,
-      wildcard:  info.wildcard,
-      network:   info.network,
+      mask: info.mask,
+      wildcard: info.wildcard,
+      network: info.network,
       broadcast: info.broadcast,
-      first:     info.first,
-      last:      info.last,
-      usable:    info.usable,
-      status:    'allocated',
+      first: info.first,
+      last: info.last,
+      usable: info.usable,
+      status: 'allocated',
     });
 
     currentInt += size;
@@ -144,12 +150,12 @@ export function allocateVLSM(
   let unallocated: UnallocatedRange | null = null;
   if (currentInt <= baseEnd) {
     const total = baseEnd - currentInt + 1;
-    const coverPrefix = coverPrefixForAddressCount(total);
+    const coverPrefix = coverPrefixForRange(currentInt, baseEnd);
     unallocated = {
-      firstAddr:   intToIp(currentInt),
-      firstInt:    currentInt,
-      lastAddr:    intToIp(baseEnd),
-      lastInt:     baseEnd,
+      firstAddr: intToIp(currentInt),
+      firstInt: currentInt,
+      lastAddr: intToIp(baseEnd),
+      lastInt: baseEnd,
       total,
       coverPrefix,
     };

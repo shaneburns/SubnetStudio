@@ -1,20 +1,66 @@
+import { randomUUID } from 'node:crypto';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import type {
   AutomationInterpretRequest,
   AutomationInterpretResponse,
 } from '../src/types/automation';
-import { getModel, getPort, isTypeSafeConfigured } from './config';
+import { getAllowedOrigins, getHost, getModel, getPort, isDevelopment, isTypeSafeConfigured } from './config';
 import { buildHealthResponse, interpretPrompt } from './automation';
 
-function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
-  res.writeHead(statusCode, {
+function isOriginAllowed(origin: string | undefined, requestHost: string | undefined): boolean {
+  if (!origin) return true;
+
+  try {
+    if (requestHost && new URL(origin).host === requestHost) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return getAllowedOrigins().includes(origin);
+}
+
+function sendJson(
+  res: ServerResponse,
+  statusCode: number,
+  body: unknown,
+  origin: string | undefined,
+): void {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
-  });
-  res.end(JSON.stringify(body));
+    Vary: 'Origin',
+  };
+
+  if (origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  res.writeHead(statusCode, headers);
+  res.end(statusCode === 204 ? undefined : JSON.stringify(body));
+}
+
+function buildClientMessage(error: unknown): string {
+  if (isDevelopment() && error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return 'Automation request failed.';
+}
+
+function logServerError(requestId: string, error: unknown): void {
+  if (error instanceof Error) {
+    console.error(`[automation][${requestId}] ${error.message}`);
+    if (error.stack) {
+      console.error(error.stack);
+    }
+    return;
+  }
+
+  console.error(`[automation][${requestId}]`, error);
 }
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {
@@ -28,15 +74,24 @@ async function readJson<T>(req: IncomingMessage): Promise<T> {
 }
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  const requestId = randomUUID();
+  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  const requestHost = typeof req.headers.host === 'string' ? req.headers.host : undefined;
+  const allowedOrigin = isOriginAllowed(origin, requestHost) ? origin : undefined;
+  const url = new URL(req.url ?? '/', `http://${requestHost ?? 'localhost'}`);
+
+  if (origin && !allowedOrigin) {
+    sendJson(res, 403, { ok: false, message: 'Origin not allowed.' }, undefined);
+    return;
+  }
 
   if (req.method === 'OPTIONS') {
-    sendJson(res, 204, null);
+    sendJson(res, 204, null, allowedOrigin);
     return;
   }
 
   if (req.method === 'GET' && url.pathname === '/api/automation/health') {
-    sendJson(res, 200, buildHealthResponse());
+    sendJson(res, 200, buildHealthResponse(), allowedOrigin);
     return;
   }
 
@@ -52,10 +107,11 @@ const server = createServer(async (req, res) => {
           configured: isTypeSafeConfigured(),
           status: 'invalid-request',
           message: 'Expected a non-empty `prompt` string.',
+          requestId: isDevelopment() ? undefined : requestId,
           supportedIntents: buildHealthResponse().supportedIntents,
           plan: null,
         };
-        sendJson(res, 400, response);
+        sendJson(res, 400, response, allowedOrigin);
         return;
       }
 
@@ -66,10 +122,11 @@ const server = createServer(async (req, res) => {
           configured: isTypeSafeConfigured(),
           status: 'invalid-request',
           message: 'Expected workspace context with a valid `basePrefix`.',
+          requestId: isDevelopment() ? undefined : requestId,
           supportedIntents: buildHealthResponse().supportedIntents,
           plan: null,
         };
-        sendJson(res, 400, response);
+        sendJson(res, 400, response, allowedOrigin);
         return;
       }
 
@@ -79,19 +136,25 @@ const server = createServer(async (req, res) => {
         : response.status === 'error'
           ? 502
           : 200;
-      sendJson(res, statusCode, response);
+      sendJson(res, statusCode, {
+        ...response,
+        ...(response.status === 'error' && !isDevelopment() ? { message: 'Automation provider error.' } : {}),
+        ...(isDevelopment() ? {} : { requestId }),
+      }, allowedOrigin);
       return;
     } catch (error) {
+      logServerError(requestId, error);
       const response: AutomationInterpretResponse = {
         ok: false,
         provider: 'typesafe',
         configured: isTypeSafeConfigured(),
         status: 'error',
-        message: error instanceof Error ? error.message : 'Automation backend error.',
+        message: buildClientMessage(error),
+        requestId: isDevelopment() ? undefined : requestId,
         supportedIntents: buildHealthResponse().supportedIntents,
         plan: null,
       };
-      sendJson(res, 502, response);
+      sendJson(res, 502, response, allowedOrigin);
       return;
     }
   }
@@ -99,11 +162,13 @@ const server = createServer(async (req, res) => {
   sendJson(res, 404, {
     ok: false,
     message: 'Not found',
-  });
+  }, allowedOrigin);
 });
 
 const port = getPort();
-server.listen(port, () => {
-  console.log(`[automation] listening on http://localhost:${port}`);
+const host = getHost();
+server.listen(port, host, () => {
+  console.log(`[automation] listening on http://${host}:${port}`);
+  console.log(`[automation] allowed origins: ${getAllowedOrigins().join(', ')}`);
   console.log(`[automation] provider=typesafe configured=${isTypeSafeConfigured()} model=${getModel()}`);
 });

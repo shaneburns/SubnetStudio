@@ -49,8 +49,18 @@ function getHealthTone(health: AutomationHealthResponse | null): 'red' | 'yellow
 
 function getHealthTooltip(health: AutomationHealthResponse | null): string {
 	if (!health) return 'not connected — the AI assist server could not be reached';
-	if (!health.configured) return `server misconfigured — backend reachable, but TypeSafeAI credentials are missing for ${health.model}`;
-	return `connected — backend reachable and configured for ${health.model}`;
+	if (!health.configured) {
+		return health.model
+			? `server misconfigured — backend reachable, but TypeSafeAI credentials are missing for ${health.model}`
+			: 'server misconfigured — backend reachable, but TypeSafeAI credentials are missing';
+	}
+	return health.model
+		? `connected — backend reachable and configured for ${health.model}`
+		: 'connected — backend reachable and configured';
+}
+
+function normalizeDisplayText(value: string | undefined | null): string {
+	return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 const EXAMPLE_PROMPTS = [
@@ -75,6 +85,13 @@ export const AutomationPanel = ({
 	const confidencePct = response?.plan ? Math.round(response.plan.confidence * 100) : null;
 	const healthTone = getHealthTone(health);
 	const healthTooltip = getHealthTooltip(health);
+	const formattedActions = response?.plan?.actions.map(formatAction) ?? [];
+	const normalizedMessage = normalizeDisplayText(response?.message);
+	const normalizedSummary = normalizeDisplayText(response?.plan?.summary);
+	const showResultMessage = Boolean(response?.message) && normalizedMessage !== normalizedSummary;
+	const showSummary = Boolean(response?.plan?.summary)
+		&& normalizedSummary !== normalizedMessage
+		&& !(formattedActions.length === 1 && normalizedSummary === normalizeDisplayText(formattedActions[0]));
 
 	return (
 		<div className="panel automation-panel">
@@ -97,7 +114,18 @@ export const AutomationPanel = ({
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<span className="automation-panel__provider-mark" aria-hidden="true">✦</span>
+							<img
+								className="automation-panel__provider-logo automation-panel__provider-logo--light"
+								src="/third-party/TypesafeAI-black.svg"
+								alt=""
+								aria-hidden="true"
+							/>
+							<img
+								className="automation-panel__provider-logo automation-panel__provider-logo--dark"
+								src="/third-party/TypesafeAI-white.svg"
+								alt=""
+								aria-hidden="true"
+							/>
 							TypeSafeAI
 						</a>
 					</div>
@@ -150,7 +178,9 @@ export const AutomationPanel = ({
 					<div className="automation-panel__result-head">
 						<div>
 							<div className="automation-panel__result-title">Interpretation result</div>
-							<div className="automation-panel__result-message">{response.message}</div>
+							{showResultMessage && (
+								<div className="automation-panel__result-message">{response.message}</div>
+							)}
 						</div>
 						{confidencePct !== null && (
 							<div className="automation-panel__confidence mono">confidence {confidencePct}%</div>
@@ -159,10 +189,12 @@ export const AutomationPanel = ({
 
 					{response.plan && (
 						<>
-							<div className="automation-panel__summary mono">{response.plan.summary}</div>
+							{showSummary && (
+								<div className="automation-panel__summary mono">{response.plan.summary}</div>
+							)}
 							<ol className="automation-panel__actions">
-								{response.plan.actions.map((action, idx) => (
-									<li key={`${action.intent}-${idx}`}>{formatAction(action)}</li>
+								{formattedActions.map((actionText, idx) => (
+									<li key={`${response.plan?.actions[idx]?.intent ?? 'action'}-${idx}`}>{actionText}</li>
 								))}
 							</ol>
 							<div className="automation-panel__decision-row">

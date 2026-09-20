@@ -887,19 +887,34 @@ td.status.conflict { color:var(--status-conflict); }
 .automation-panel__powered-by{
   font-size:11px;
   color:var(--muted);
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
 }
 .automation-panel__provider-link{
   color:var(--text);
   text-decoration:none;
   display:inline-flex;
   align-items:center;
-  gap:4px;
+  gap:6px;
 }
 .automation-panel__provider-link:hover{ color:var(--network); }
-.automation-panel__provider-mark{
-  color:var(--network);
-  font-size:11px;
-  line-height:1;
+.automation-panel__provider-logo{
+  display:block;
+  width:14px;
+  height:auto;
+  flex-shrink:0;
+}
+.automation-panel__provider-logo--dark{ display:none; }
+html[data-theme='default'] .automation-panel__provider-logo--light,
+html[data-theme='dark'] .automation-panel__provider-logo--light,
+html[data-theme='desert-night'] .automation-panel__provider-logo--light{
+  display:none;
+}
+html[data-theme='default'] .automation-panel__provider-logo--dark,
+html[data-theme='dark'] .automation-panel__provider-logo--dark,
+html[data-theme='desert-night'] .automation-panel__provider-logo--dark{
+  display:block;
 }
 .automation-panel__hint,
 .automation-panel__examples,
@@ -1158,23 +1173,43 @@ footer{
 .footer-right{
   display:flex;
   align-items:center;
-  gap:16px;
+  gap:12px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
 }
-.footer-gh{
+.footer-link{
   display:inline-flex;
   align-items:center;
-  gap:5px;
+  gap:6px;
   color:var(--muted-2);
   text-decoration:none;
-  transition:color .15s ease;
+  transition:color .15s ease, border-color .15s ease, background .15s ease;
 }
-.footer-gh:hover{ color:var(--text); }
-.footer-gh__icon{
+.footer-link:hover{ color:var(--text); }
+.footer-link--pi{
+  padding:5px 8px;
+  border:1px solid var(--grid);
+  border-radius:var(--radius);
+  background:var(--panel-2);
+}
+.footer-link--pi:hover{
+  border-color:var(--network);
+  color:var(--network);
+}
+.footer-link__icon{
   width:13px;
   height:13px;
   fill:currentColor;
   flex-shrink:0;
   vertical-align:middle;
+}
+.footer-link__logo{
+  display:block;
+  flex-shrink:0;
+}
+.footer-link__logo--pi{
+  width:14px;
+  height:14px;
 }
 
 /* ── HEADER RIGHT GROUP ─────────────────────────────────── */

@@ -405,14 +405,28 @@ const App = () => {
           <span>{`// v${SubnetStudioConfig.version}`} {SubnetStudioConfig.stable && `// (stable: v${SubnetStudioConfig.stable})`}</span>
           <div className="footer-right">
             <a
-              className="footer-gh"
+              className="footer-link footer-link--pi"
+              href="https://github.com/earendil-works/pi"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Made using Pi Coding Agent"
+            >
+              made using 
+			  <img
+                className="footer-link__logo footer-link__logo--pi"
+                src="/third-party/Pi_coding_agent.svg"
+                alt=""
+                aria-hidden="true"
+              />
+            </a>
+            <a
+              className="footer-link footer-link--gh"
               href="https://github.com/shaneburns/SubnetStudio"
               target="_blank"
               rel="noopener noreferrer"
               title="View source on GitHub"
             >
-              {/* GitHub mark SVG */}
-              <svg className="footer-gh__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <svg className="footer-link__icon" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
                   0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
                   -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66

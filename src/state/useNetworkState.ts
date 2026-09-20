@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { BaseNetwork, parseCIDR } from '../domain/ipv4';
 import { AllocationRequest } from '../domain/vlsm';
+import { MAX_EQUAL_SPLIT_BLOCKS } from '../lib/prefixOptions';
 import { AutomationAction, AutomationPlan } from '../types/automation';
 
 export type NetworkState = {
@@ -25,6 +26,31 @@ export type ApplyAutomationPlanToStateResult = ApplyAutomationPlanResult & {
 
 function normalizeSegmentName(name: string): string {
   return name.trim().toLowerCase();
+}
+
+function equalSplitBlockCount(basePrefix: number, splitPrefix: number): number {
+  return Math.pow(2, splitPrefix - basePrefix);
+}
+
+function normalizeEqualSplitPrefix(prefix: number | null, basePrefix: number): number | null {
+  if (prefix === null) return null;
+  if (!Number.isInteger(prefix) || prefix <= basePrefix || prefix > 32) return null;
+  if (equalSplitBlockCount(basePrefix, prefix) > MAX_EQUAL_SPLIT_BLOCKS) return null;
+  return prefix;
+}
+
+function validateEqualSplitPrefix(prefix: number | null, basePrefix: number): string | null {
+  if (prefix === null) return null;
+  if (!Number.isInteger(prefix) || prefix <= basePrefix || prefix > 32) {
+    return `Split prefix /${prefix} is not valid for base /${basePrefix}.`;
+  }
+
+  const blockCount = equalSplitBlockCount(basePrefix, prefix);
+  if (blockCount > MAX_EQUAL_SPLIT_BLOCKS) {
+    return `Split prefix /${prefix} would generate ${blockCount.toLocaleString()} blocks, exceeding the limit of ${MAX_EQUAL_SPLIT_BLOCKS.toLocaleString()}.`;
+  }
+
+  return null;
 }
 
 function upsertVlsmRequest(
@@ -81,10 +107,7 @@ export function applyAutomationActionToState(state: NetworkState, action: Automa
         state: {
           ...state,
           base: parsed,
-          equalSplitPrefix:
-            state.equalSplitPrefix !== null && state.equalSplitPrefix <= parsed.prefix
-              ? null
-              : state.equalSplitPrefix,
+          equalSplitPrefix: normalizeEqualSplitPrefix(state.equalSplitPrefix, parsed.prefix),
           selectedBlockIdx: 0,
         },
         message: `Base network set to ${action.cidr}.`,
@@ -92,11 +115,12 @@ export function applyAutomationActionToState(state: NetworkState, action: Automa
     }
 
     case 'set-equal-split-prefix': {
-      if (action.prefix !== null && (action.prefix <= state.base.prefix || action.prefix > 32)) {
+      const validationError = validateEqualSplitPrefix(action.prefix, state.base.prefix);
+      if (validationError) {
         return {
           ok: false,
           state,
-          message: `Split prefix /${action.prefix} is not valid for base /${state.base.prefix}.`,
+          message: validationError,
         };
       }
 
@@ -224,11 +248,7 @@ export function useNetworkState() {
     setState(prev => ({
       ...prev,
       base: { ip, prefix },
-      // If the current split prefix is no longer valid for the new base prefix, clear it
-      equalSplitPrefix:
-        prev.equalSplitPrefix !== null && prev.equalSplitPrefix <= prefix
-          ? null
-          : prev.equalSplitPrefix,
+      equalSplitPrefix: normalizeEqualSplitPrefix(prev.equalSplitPrefix, prefix),
       selectedBlockIdx: 0,
     }));
   }, []);
@@ -238,7 +258,12 @@ export function useNetworkState() {
   }, []);
 
   const updateEqualSplit = useCallback((prefix: number | null) => {
-    setState(prev => ({ ...prev, equalSplitPrefix: prefix, selectedBlockIdx: 0 }));
+    setState(prev => {
+      const nextPrefix = normalizeEqualSplitPrefix(prefix, prev.base.prefix);
+      return prefix !== null && nextPrefix === null
+        ? prev
+        : { ...prev, equalSplitPrefix: nextPrefix, selectedBlockIdx: 0 };
+    });
   }, []);
 
   const addVlsmRequest = useCallback((name: string, hosts: number) => {
@@ -260,7 +285,6 @@ export function useNetworkState() {
     }));
   }, []);
 
-  // dragId = item being dragged, dropId = item it was dropped onto
   const reorderVlsmRequests = useCallback((dragId: string, dropId: string) => {
     if (dragId === dropId) return;
     setState(prev => {
@@ -286,24 +310,17 @@ export function useNetworkState() {
   }, []);
 
   const applyAutomationPlan = useCallback((plan: AutomationPlan): ApplyAutomationPlanResult => {
-    let result: ApplyAutomationPlanResult = {
-      ok: true,
-      applied: 0,
-      message: plan.summary,
+    const result = applyAutomationPlanToState(state, plan);
+    if (result.ok) {
+      setState(result.state);
+    }
+
+    return {
+      ok: result.ok,
+      applied: result.applied,
+      message: result.message,
     };
-
-    setState(prev => {
-      const applied = applyAutomationPlanToState(prev, plan);
-      result = {
-        ok: applied.ok,
-        applied: applied.applied,
-        message: applied.message,
-      };
-      return applied.state;
-    });
-
-    return result;
-  }, []);
+  }, [state]);
 
   return {
     state,

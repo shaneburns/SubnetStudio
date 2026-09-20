@@ -4,9 +4,10 @@ import type {
   AutomationIntent,
   AutomationInterpretRequest,
   AutomationInterpretResponse,
+  AutomationMode,
   AutomationPlan,
 } from '../src/types/automation';
-import { getModel, getTypeSafeApiUrl, isTypeSafeConfigured } from './config';
+import { getModel, getTypeSafeApiUrl, isDevelopment, isTypeSafeConfigured } from './config';
 import { ChoiceAnswer, callTypeSafeSystemOne } from './typesafe';
 
 const SUPPORTED_INTENTS: AutomationIntent[] = [
@@ -18,6 +19,7 @@ const SUPPORTED_INTENTS: AutomationIntent[] = [
   'unsupported',
 ];
 
+const MAX_EQUAL_SPLIT_BLOCKS = 4096;
 const CIDR_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\/\d{1,2}\b/g;
 const PREFIX_REGEX = /\/(\d{1,2})(?:s)?\b/g;
 const SUBNET_COUNT_PATTERNS = [
@@ -61,6 +63,7 @@ const HOST_PAIR_PATTERNS = [
   /([A-Za-z][A-Za-z0-9 -]{0,30}?)\s*[:=]\s*(\d{1,6})\b/g,
   /([A-Za-z][A-Za-z0-9 -]{0,30}?)\s+(\d{1,6})\s+hosts?\b/gi,
 ];
+const AUTOMATION_MODES: AutomationMode[] = ['equal-split', 'vlsm'];
 
 type CandidateRequest = {
   name: string;
@@ -102,8 +105,6 @@ function parseNumberPhrase(raw: string): number | null {
 
     if (value === 100) {
       current = Math.max(1, current) * 100;
-    } else if (value >= 20) {
-      current += value;
     } else {
       current += value;
     }
@@ -323,14 +324,67 @@ function buildReadyResponse(plan: AutomationPlan, message = plan.summary): Autom
   };
 }
 
+function isAutomationMode(choice: string): choice is AutomationMode {
+  return AUTOMATION_MODES.includes(choice as AutomationMode);
+}
+
+function resolveModeChoice(choice: string | undefined): AutomationMode | null | undefined {
+  if (!choice || choice === 'none') return null;
+  return isAutomationMode(choice) ? choice : undefined;
+}
+
+function parseCidrPrefix(cidr: string): number | null {
+  const match = cidr.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if (!match) return null;
+
+  const octets = match.slice(1, 5).map(Number);
+  const prefix = Number(match[5]);
+  if (octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null;
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return null;
+  return prefix;
+}
+
+function resolveCidrChoice(choice: string | undefined, cidrCandidates: string[]): string | null | undefined {
+  if (!choice || choice === 'none') return null;
+  if (!cidrCandidates.includes(choice)) return undefined;
+  return parseCidrPrefix(choice) === null ? undefined : choice;
+}
+
+function isValidEqualSplitPrefix(prefix: number, basePrefix: number): boolean {
+  if (!Number.isInteger(prefix) || prefix <= basePrefix || prefix > 32) return false;
+  return Math.pow(2, prefix - basePrefix) <= MAX_EQUAL_SPLIT_BLOCKS;
+}
+
+function resolveSelectedPrefix(
+  prefixAnswer: ChoiceAnswer | undefined,
+  explicitPrefixCandidates: number[],
+  derivedPrefix: number | null,
+  basePrefix: number,
+): number | null | undefined {
+  if (prefixAnswer && prefixAnswer.choice !== 'none') {
+    const selectedPrefix = Number(prefixAnswer.choice);
+    if (!Number.isInteger(selectedPrefix) || !explicitPrefixCandidates.includes(selectedPrefix)) {
+      return undefined;
+    }
+    return isValidEqualSplitPrefix(selectedPrefix, basePrefix) ? selectedPrefix : undefined;
+  }
+
+  if (derivedPrefix === null) return null;
+  return isValidEqualSplitPrefix(derivedPrefix, basePrefix) ? derivedPrefix : undefined;
+}
+
 /** Builds the backend readiness payload consumed by the frontend. */
 export function buildHealthResponse(): AutomationHealthResponse {
   return {
     ok: true,
     provider: 'typesafe',
     configured: isTypeSafeConfigured(),
-    model: getModel(),
-    apiUrl: getTypeSafeApiUrl(),
+    ...(isDevelopment()
+      ? {
+          model: getModel(),
+          apiUrl: getTypeSafeApiUrl(),
+        }
+      : {}),
     supportedIntents: SUPPORTED_INTENTS,
   };
 }
@@ -343,7 +397,9 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
       provider: 'typesafe',
       configured: false,
       status: 'not-configured',
-      message: 'Automation backend is running, but TYPESAFE_API_KEY is not configured on the server.',
+      message: isDevelopment()
+        ? 'Automation backend is running, but TYPESAFE_API_KEY is not configured on the server.'
+        : 'Automation backend is not configured.',
       supportedIntents: SUPPORTED_INTENTS,
       plan: null,
     };
@@ -397,7 +453,9 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
   const modeAnswer = response.answers.mode_choice;
   const cidrAnswer = response.answers.cidr_choice;
   const prefixAnswer = response.answers.prefix_choice;
-  const selectedPrefix = prefixAnswer && prefixAnswer.choice !== 'none' ? Number(prefixAnswer.choice) : derivedPrefix;
+  const resolvedModeChoice = resolveModeChoice(modeAnswer?.choice);
+  const resolvedCidrChoice = resolveCidrChoice(cidrAnswer?.choice, cidrCandidates);
+  const resolvedCidrPrefix = resolvedCidrChoice ? parseCidrPrefix(resolvedCidrChoice) : null;
 
   switch (intentChoice as AutomationIntent) {
     case 'set-mode': {
@@ -407,8 +465,14 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
         );
       }
 
+      if (!resolvedModeChoice) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an unsupported mode choice.', minConfidence([intentAnswer, modeAnswer])),
+        );
+      }
+
       return buildReadyResponse(
-        buildPlan([{ intent: 'set-mode', mode: modeAnswer.choice as 'equal-split' | 'vlsm' }], minConfidence([intentAnswer, modeAnswer])),
+        buildPlan([{ intent: 'set-mode', mode: resolvedModeChoice }], minConfidence([intentAnswer, modeAnswer])),
       );
     }
 
@@ -419,18 +483,70 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
         );
       }
 
-      const actions: AutomationAction[] = [{ intent: 'set-base-cidr', cidr: cidrAnswer.choice }];
-      if (modeAnswer && modeAnswer.choice !== 'none') {
-        actions.unshift({ intent: 'set-mode', mode: modeAnswer.choice as 'equal-split' | 'vlsm' });
+      if (!resolvedCidrChoice || resolvedCidrPrefix === null) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an unsupported base CIDR choice.', minConfidence([intentAnswer, cidrAnswer])),
+        );
+      }
+
+      if (modeAnswer && modeAnswer.choice !== 'none' && !resolvedModeChoice) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an unsupported mode choice.', minConfidence([intentAnswer, modeAnswer, cidrAnswer])),
+        );
+      }
+
+      const selectedPrefix = resolveSelectedPrefix(
+        prefixAnswer,
+        explicitPrefixCandidates,
+        derivedPrefix,
+        resolvedCidrPrefix,
+      );
+      if (selectedPrefix === undefined) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an invalid equal-split prefix for the selected base network.', minConfidence([intentAnswer, cidrAnswer, ...(prefixAnswer ? [prefixAnswer] : [])])),
+        );
+      }
+
+      const actions: AutomationAction[] = [{ intent: 'set-base-cidr', cidr: resolvedCidrChoice }];
+      if (resolvedModeChoice) {
+        actions.unshift({ intent: 'set-mode', mode: resolvedModeChoice });
       }
       if (selectedPrefix !== null) {
         actions.push({ intent: 'set-equal-split-prefix', prefix: selectedPrefix });
       }
 
-      return buildReadyResponse(buildPlan(actions, minConfidence([intentAnswer, cidrAnswer, ...(modeAnswer && modeAnswer.choice !== 'none' ? [modeAnswer] : []), ...(prefixAnswer && prefixAnswer.choice !== 'none' ? [prefixAnswer] : [])])));
+      return buildReadyResponse(buildPlan(actions, minConfidence([
+        intentAnswer,
+        cidrAnswer,
+        ...(modeAnswer && modeAnswer.choice !== 'none' ? [modeAnswer] : []),
+        ...(prefixAnswer && prefixAnswer.choice !== 'none' ? [prefixAnswer] : []),
+      ])));
     }
 
     case 'set-equal-split-prefix': {
+      if (cidrAnswer && cidrAnswer.choice !== 'none' && (!resolvedCidrChoice || resolvedCidrPrefix === null)) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an unsupported base CIDR choice.', minConfidence([intentAnswer, cidrAnswer])),
+        );
+      }
+
+      const effectiveBasePrefix =
+        resolvedCidrChoice && resolvedCidrPrefix !== null && !shouldKeepCurrentBase(prompt, workspace.baseCidr, resolvedCidrChoice)
+          ? resolvedCidrPrefix
+          : workspace.basePrefix;
+      const selectedPrefix = resolveSelectedPrefix(
+        prefixAnswer,
+        explicitPrefixCandidates,
+        derivedPrefix,
+        effectiveBasePrefix,
+      );
+
+      if (selectedPrefix === undefined) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an invalid equal-split prefix for the selected base network.', minConfidence([intentAnswer, ...(prefixAnswer ? [prefixAnswer] : [])])),
+        );
+      }
+
       if (selectedPrefix === null) {
         return buildReadyResponse(
           unsupportedPlan('The prompt asked for an equal-split prefix, but no target prefix was identified.', intentAnswer.confidence),
@@ -438,12 +554,16 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
       }
 
       const actions: AutomationAction[] = [];
-      if (cidrAnswer && !shouldKeepCurrentBase(prompt, workspace.baseCidr, cidrAnswer.choice)) {
-        actions.push({ intent: 'set-base-cidr', cidr: cidrAnswer.choice });
+      if (resolvedCidrChoice && !shouldKeepCurrentBase(prompt, workspace.baseCidr, resolvedCidrChoice)) {
+        actions.push({ intent: 'set-base-cidr', cidr: resolvedCidrChoice });
       }
       actions.push({ intent: 'set-equal-split-prefix', prefix: selectedPrefix });
 
-      return buildReadyResponse(buildPlan(actions, minConfidence([intentAnswer, ...(prefixAnswer && prefixAnswer.choice !== 'none' ? [prefixAnswer] : []), ...(cidrAnswer && !shouldKeepCurrentBase(prompt, workspace.baseCidr, cidrAnswer.choice) ? [cidrAnswer] : [])])));
+      return buildReadyResponse(buildPlan(actions, minConfidence([
+        intentAnswer,
+        ...(prefixAnswer && prefixAnswer.choice !== 'none' ? [prefixAnswer] : []),
+        ...(resolvedCidrChoice && !shouldKeepCurrentBase(prompt, workspace.baseCidr, resolvedCidrChoice) && cidrAnswer ? [cidrAnswer] : []),
+      ])));
     }
 
     case 'upsert-vlsm-request': {
@@ -454,12 +574,18 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
         );
       }
 
+      if (cidrAnswer && cidrAnswer.choice !== 'none' && !resolvedCidrChoice) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an unsupported base CIDR choice.', minConfidence([intentAnswer, cidrAnswer])),
+        );
+      }
+
       const actions: AutomationAction[] = [];
-      if (modeAnswer && modeAnswer.choice === 'vlsm') {
+      if (resolvedModeChoice === 'vlsm') {
         actions.push({ intent: 'set-mode', mode: 'vlsm' });
       }
-      if (cidrAnswer && cidrAnswer.choice !== 'none') {
-        actions.push({ intent: 'set-base-cidr', cidr: cidrAnswer.choice });
+      if (resolvedCidrChoice) {
+        actions.push({ intent: 'set-base-cidr', cidr: resolvedCidrChoice });
       }
       actions.push({
         intent: 'upsert-vlsm-request',
@@ -467,7 +593,11 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
         hostsNeeded: request.hostsNeeded,
       });
 
-      return buildReadyResponse(buildPlan(actions, minConfidence([intentAnswer, ...(modeAnswer && modeAnswer.choice === 'vlsm' ? [modeAnswer] : []), ...(cidrAnswer && cidrAnswer.choice !== 'none' ? [cidrAnswer] : [])])));
+      return buildReadyResponse(buildPlan(actions, minConfidence([
+        intentAnswer,
+        ...(resolvedModeChoice === 'vlsm' && modeAnswer ? [modeAnswer] : []),
+        ...(resolvedCidrChoice && cidrAnswer ? [cidrAnswer] : []),
+      ])));
     }
 
     case 'batch-vlsm-requests': {
@@ -477,19 +607,29 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
         );
       }
 
+      if (cidrAnswer && cidrAnswer.choice !== 'none' && !resolvedCidrChoice) {
+        return buildReadyResponse(
+          unsupportedPlan('The provider returned an unsupported base CIDR choice.', minConfidence([intentAnswer, cidrAnswer])),
+        );
+      }
+
       const actions: AutomationAction[] = [];
-      if (modeAnswer && modeAnswer.choice === 'vlsm') {
+      if (resolvedModeChoice === 'vlsm') {
         actions.push({ intent: 'set-mode', mode: 'vlsm' });
       }
-      if (cidrAnswer && cidrAnswer.choice !== 'none') {
-        actions.push({ intent: 'set-base-cidr', cidr: cidrAnswer.choice });
+      if (resolvedCidrChoice) {
+        actions.push({ intent: 'set-base-cidr', cidr: resolvedCidrChoice });
       }
       actions.push({
         intent: 'batch-vlsm-requests',
         requests: requestCandidates,
       });
 
-      return buildReadyResponse(buildPlan(actions, minConfidence([intentAnswer, ...(modeAnswer && modeAnswer.choice === 'vlsm' ? [modeAnswer] : []), ...(cidrAnswer && cidrAnswer.choice !== 'none' ? [cidrAnswer] : [])])));
+      return buildReadyResponse(buildPlan(actions, minConfidence([
+        intentAnswer,
+        ...(resolvedModeChoice === 'vlsm' && modeAnswer ? [modeAnswer] : []),
+        ...(resolvedCidrChoice && cidrAnswer ? [cidrAnswer] : []),
+      ])));
     }
 
     case 'unsupported':

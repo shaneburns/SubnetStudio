@@ -1,5 +1,12 @@
 import { getTypeSafeApiKey, getTypeSafeApiUrl } from './config';
 
+function truncateForLog(value: string, maxLength = 1000): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}… [truncated]`
+    : normalized;
+}
+
 export interface ChoiceAnswer {
   type: 'choice';
   choice: string;
@@ -28,7 +35,7 @@ export async function callTypeSafeSystemOne(requestBody: unknown): Promise<TypeS
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText = truncateForLog(await response.text());
     throw new Error(`TypeSafe request failed (${response.status}): ${errorText}`);
   }
 

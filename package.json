@@ -1,6 +1,6 @@
 {
   "name": "subnetstudio",
-  "version": "0.0.1-alpha",
+  "version": "0.0.2-alpha",
   "description": "Visual IPv4 subnetting tool",
   "main": "index.js",
   "scripts": {

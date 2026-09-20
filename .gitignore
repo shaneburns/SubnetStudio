@@ -17,7 +17,6 @@ public/workbox-*.js
 Thumbs.db
 
 # Editor directories
-.vscode/
 .idea/
 
 # Local env files
