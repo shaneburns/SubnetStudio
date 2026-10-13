@@ -17,9 +17,11 @@ A visual-first IPv4 subnetting tool designed for learning and planning network
 address spaces. Core subnet math and visualization remain deterministic and
 browser-first.
 
-Most of the app still runs fully client-side, but this branch also adds an
-**optional automation backend** for TypeSafe-powered natural-language commands.
-Nothing is sent off-device unless you explicitly use the automation feature.
+Most of the app still runs fully client-side. The repo also contains an
+**optional automation backend** for TypeSafe-powered natural-language commands,
+but it is **feature-flagged off** in v0.0.2a (see [AI Assist feature flag](#ai-assist-feature-flag))
+and slated for v0.0.3a. Nothing is sent off-device unless the flag is enabled
+and you explicitly use the automation feature.
 
 **Live:** [subnetstudio.infispect.com](https://subnetstudio.infispect.com)
 **Issues / Feedback:** [github.com/shaneburns/SubnetStudio/issues](https://github.com/shaneburns/SubnetStudio/issues)
@@ -43,8 +45,9 @@ Nothing is sent off-device unless you explicitly use the automation feature.
 - **BitNoise background** — Perlin-noise-driven animated bit grid that adapts
   to the active theme palette
 - **PWA** — installable, works fully offline after first load
-- **Automation command bar** — optional cloud-assisted natural-language command
-  entry with confidence-scored previews before apply
+- **Automation command bar** *(preview — off by default, targeting v0.0.3a)* —
+  optional cloud-assisted natural-language command entry with confidence-scored
+  previews before apply; enabled via `VITE_ENABLE_AI_ASSIST=true`
 
 ---
 
@@ -86,6 +89,9 @@ npm run dev
 Open [http://localhost:5173](http://localhost:5173).
 
 ### Run the automation backend too
+
+> The AI Assist UI is hidden unless `VITE_ENABLE_AI_ASSIST=true` is set — see
+> [AI Assist feature flag](#ai-assist-feature-flag).
 
 Copy the example env file and add your TypeSafe key:
 
@@ -133,9 +139,31 @@ npm run typecheck
 
 ---
 
+## AI Assist feature flag
+
+The AI Assist panel (✦ button, automation command bar, and all
+`/api/automation/*` requests) is gated behind a **build-time** flag:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `VITE_ENABLE_AI_ASSIST` | unset / `false` | AI UI is not rendered and no backend requests are made. Vite inlines the flag, so the panel is tree-shaken out of production bundles. |
+| `VITE_ENABLE_AI_ASSIST=true` | — | Shows the ✦ toggle and enables the automation panel + backend calls. |
+
+- **v0.0.2a ships with the flag off.** The production Docker image
+  (`docker/dockerfile.prod`) runs `npm run build` without the variable, so the
+  deployed site contains no AI surface and never contacts an automation backend.
+- To work on AI features locally, add `VITE_ENABLE_AI_ASSIST=true` to
+  `.env.local` (gitignored) and run `npm run dev:full`.
+- Because `VITE_*` values are baked in at build time, flipping the flag requires
+  a rebuild — it is not a runtime toggle.
+- The flag lives in `src/config/featureFlags.ts`; the `server/` companion is
+  unaffected and simply isn't started in flag-off deployments.
+
+---
+
 ## Automation Notes
 
-- The automation feature is **optional**.
+- The automation feature is **optional** and **disabled by default** (see above).
 - Core subnetting continues to work without the backend.
 - When you use the command bar, your prompt is sent to the local backend and,
   if configured, onward to the TypeSafe endpoint defined by `TYPESAFE_API_URL`.

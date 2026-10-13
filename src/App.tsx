@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SubnetStudioConfig } from './config/SubnetStudioConfig';
+import { AI_ASSIST_ENABLED } from './config/featureFlags';
 function useClock() {
   const [time, setTime] = useState(() => new Date().toString().slice(0, 24));
   useEffect(() => {
@@ -63,7 +64,7 @@ const App = () => {
   // ── VLSM search ─────────────────────────────────────────────────────────
   const [vlsmSearch, setVlsmSearch] = useState('');
 
-  // ── Automation ───────────────────────────────────────────────────────────
+  // ── Automation (AI Assist) — compiled out unless VITE_ENABLE_AI_ASSIST=true ──
   const [automationVisible, setAutomationVisible] = useState(false);
   const [automationPrompt, setAutomationPrompt] = useState('');
   const [automationBusy, setAutomationBusy] = useState(false);
@@ -72,6 +73,7 @@ const App = () => {
   const [automationNotice, setAutomationNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!AI_ASSIST_ENABLED) return;
     let active = true;
 
     const loadAutomationHealth = async () => {
@@ -95,6 +97,7 @@ const App = () => {
   }, []);
 
   const runAutomationPrompt = async () => {
+    if (!AI_ASSIST_ENABLED) return;
     if (!automationPrompt.trim() || automationBusy) return;
     setAutomationBusy(true);
     setAutomationNotice(null);
@@ -267,12 +270,13 @@ const App = () => {
         <Header
           mode={state.mode}
           setMode={updateMode}
+          automationEnabled={AI_ASSIST_ENABLED}
           automationVisible={automationVisible}
           onToggleAutomation={() => setAutomationVisible(visible => !visible)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
-        {automationVisible && (
+        {AI_ASSIST_ENABLED && automationVisible && (
           <AutomationPanel
             prompt={automationPrompt}
             response={automationResponse}

@@ -3,12 +3,21 @@ import React from 'react';
 interface HeaderProps {
 	mode:                'equal-split' | 'vlsm';
 	setMode:             (mode: 'equal-split' | 'vlsm') => void;
-	automationVisible:   boolean;
-	onToggleAutomation:  () => void;
+	/** When false the AI Assist toggle is not rendered at all. */
+	automationEnabled?:  boolean;
+	automationVisible?:  boolean;
+	onToggleAutomation?: () => void;
 	onOpenSettings:      () => void;
 }
 
-export const Header = ({ mode, setMode, automationVisible, onToggleAutomation, onOpenSettings }: HeaderProps) => (
+export const Header = ({
+	mode,
+	setMode,
+	automationEnabled = false,
+	automationVisible = false,
+	onToggleAutomation,
+	onOpenSettings,
+}: HeaderProps) => (
 	<header>
 		<div className="brand">
 			<span id="subnet-studio-logo" role="img" aria-label="Subnet Studio Logo"><img src="/logo-transparent.svg" alt="Subnet Studio Logo" /></span>
@@ -27,15 +36,17 @@ export const Header = ({ mode, setMode, automationVisible, onToggleAutomation, o
 				>IPv4 VLSM</span>
 			</div>
 
-			<button
-				className={`header-ai-btn${automationVisible ? ' active' : ''}`}
-				onClick={onToggleAutomation}
-				title={automationVisible ? 'Hide AI Assist' : 'Show AI Assist'}
-				aria-label={automationVisible ? 'Hide AI Assist' : 'Show AI Assist'}
-				aria-pressed={automationVisible}
-			>
-				✦
-			</button>
+			{automationEnabled && (
+				<button
+					className={`header-ai-btn${automationVisible ? ' active' : ''}`}
+					onClick={onToggleAutomation}
+					title={automationVisible ? 'Hide AI Assist' : 'Show AI Assist'}
+					aria-label={automationVisible ? 'Hide AI Assist' : 'Show AI Assist'}
+					aria-pressed={automationVisible}
+				>
+					✦
+				</button>
+			)}
 
 			<button
 				className="header-settings-btn"
