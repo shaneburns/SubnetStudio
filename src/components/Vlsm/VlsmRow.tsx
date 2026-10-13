@@ -7,11 +7,22 @@ interface VlsmRowProps {
 	allocation?: Allocation;
 	updateRequest: (id: string, updates: Partial<AllocationRequest>) => void;
 	removeRequest: (id: string) => void;
-	onDragStart: (id: string) => void;
-	onDrop: (targetId: string) => void;
+	onMoveUp: () => void;
+	onMoveDown: () => void;
+	canMoveUp: boolean;
+	canMoveDown: boolean;
 }
 
-export const VlsmRow = ({ req, allocation, updateRequest, removeRequest, onDragStart, onDrop }: VlsmRowProps) => {
+export const VlsmRow = ({
+	req,
+	allocation,
+	updateRequest,
+	removeRequest,
+	onMoveUp,
+	onMoveDown,
+	canMoveUp,
+	canMoveDown,
+}: VlsmRowProps) => {
 	const isOverflow = allocation?.status === 'overflow';
 
 	const allocationLabel = () => {
@@ -26,15 +37,7 @@ export const VlsmRow = ({ req, allocation, updateRequest, removeRequest, onDragS
 	};
 
 	return (
-		<div
-			className="vlsm-row"
-			draggable
-			onDragStart={() => onDragStart(req.id)}
-			onDragOver={(e) => e.preventDefault()}
-			onDrop={(e) => { e.preventDefault(); onDrop(req.id); }}
-		>
-			<span className="drag-handle" title="Drag to reorder">⋮⋮</span>
-
+		<div className="vlsm-row">
 			<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
 				<input
 					value={req.name}
@@ -56,6 +59,23 @@ export const VlsmRow = ({ req, allocation, updateRequest, removeRequest, onDragS
 					style={{ color: isOverflow ? 'var(--error)' : undefined }}
 				/>
 				<span className="mono" style={{ fontSize: '10px', color: 'var(--muted)' }}>req. hosts</span>
+			</div>
+
+			<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+				<button
+					type="button"
+					className="btn btn-reorder"
+					onClick={onMoveUp}
+					disabled={!canMoveUp}
+					aria-label={`Move ${req.name || 'requirement'} up`}
+				>↑</button>
+				<button
+					type="button"
+					className="btn btn-reorder"
+					onClick={onMoveDown}
+					disabled={!canMoveDown}
+					aria-label={`Move ${req.name || 'requirement'} down`}
+				>↓</button>
 			</div>
 
 			<button

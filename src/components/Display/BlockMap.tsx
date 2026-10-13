@@ -5,6 +5,7 @@ import { Allocation } from '../../domain/vlsm';
 import { CidrHighlight } from '../Shared/CidrHighlight';
 import { Paginator } from '../Shared/Paginator';
 import { usePagination } from '../../state/usePagination';
+import { getAvailableEqualSplitPrefixes } from '../../lib/prefixOptions';
 
 interface ExtendedBlock extends SubnetInfo {
   name?: string;
@@ -23,7 +24,6 @@ interface BlockMapProps {
   onSplitChange?: (prefix: number | null) => void;
 }
 
-const COMMON_PREFIXES   = [8, 16, 20, 24, 25, 26, 27, 28, 30];
 const COMPACT_THRESHOLD = 32;
 const PAGE_SIZE_BAR     = 32;   // blocks per page in bar view
 const PAGE_SIZE_TILE    = 128;  // tiles per page in compact view
@@ -165,7 +165,7 @@ export const BlockMap = ({
   }
 
   // ── Equal-split options ───────────────────────────────────────────────────
-  const availableSplits = COMMON_PREFIXES.filter(p => p > basePrefix && p <= 30);
+  const availableSplits = getAvailableEqualSplitPrefixes(basePrefix);
 
   return (
     <div className="panel" style={{ position: 'relative' }}>

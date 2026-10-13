@@ -1,5 +1,6 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SubnetStudioConfig } from './config/SubnetStudioConfig';
+import { AI_ASSIST_ENABLED } from './config/featureFlags';
 function useClock() {
   const [time, setTime] = useState(() => new Date().toString().slice(0, 24));
   useEffect(() => {
@@ -11,6 +12,7 @@ function useClock() {
 
 import { useNetworkState } from './state/useNetworkState';
 import { useTheme } from './state/useTheme';
+import { AutomationHealthResponse, AutomationInterpretRequest, AutomationInterpretResponse, AutomationWorkspaceContext } from './types/automation';
 import {
   subnetInfo,
   intToIp,
@@ -28,6 +30,7 @@ import { RangeReport } from './components/Display/RangeReport';
 import { VlsmRow } from './components/Vlsm/VlsmRow';
 import { BitNoise } from './components/Background/BitNoise';
 import { SettingsModal } from './components/Settings/SettingsModal';
+import { AutomationPanel } from './components/Automation/AutomationPanel';
 import './index.css';
 
 // ── Extended block shape used by visual components ──────────────────────────
@@ -35,6 +38,16 @@ interface ExtendedBlock extends SubnetInfo {
   name?: string;
   status?: 'allocated' | 'conflict' | 'overflow';
   isRemainder?: boolean;
+}
+
+function sameAutomationWorkspace(
+  left: AutomationWorkspaceContext,
+  right: AutomationWorkspaceContext,
+): boolean {
+  return left.baseCidr === right.baseCidr
+    && left.basePrefix === right.basePrefix
+    && left.mode === right.mode
+    && left.equalSplitPrefix === right.equalSplitPrefix;
 }
 
 const App = () => {
@@ -45,9 +58,10 @@ const App = () => {
     updateEqualSplit,
     addVlsmRequest,
     removeVlsmRequest,
-    reorderVlsmRequests,
     updateVlsmRequest,
+    reorderVlsmRequests,
     setSelectedBlockIdx,
+    applyAutomationPlan,
   } = useNetworkState();
 
   const clock = useClock();
@@ -58,11 +72,130 @@ const App = () => {
   // ── Settings modal ─────────────────────────────────────────────────────────
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Tracks which VLSM row is being dragged so the drop handler knows both IDs
-  const dragSourceId = useRef<string | null>(null);
-
   // ── VLSM search ─────────────────────────────────────────────────────────
   const [vlsmSearch, setVlsmSearch] = useState('');
+
+  // ── Automation (AI Assist) — compiled out unless VITE_ENABLE_AI_ASSIST=true ──
+  const [automationVisible, setAutomationVisible] = useState(false);
+  const [automationPrompt, setAutomationPrompt] = useState('');
+  const [automationBusy, setAutomationBusy] = useState(false);
+  const [automationHealth, setAutomationHealth] = useState<AutomationHealthResponse | null>(null);
+  const [automationResponse, setAutomationResponse] = useState<AutomationInterpretResponse | null>(null);
+  const [automationResponseWorkspace, setAutomationResponseWorkspace] = useState<AutomationWorkspaceContext | null>(null);
+  const [automationNotice, setAutomationNotice] = useState<string | null>(null);
+  const automationWorkspace: AutomationWorkspaceContext = {
+    baseCidr: `${state.base.ip}/${state.base.prefix}`,
+    basePrefix: state.base.prefix,
+    mode: state.mode,
+    equalSplitPrefix: state.equalSplitPrefix,
+  };
+  const automationWorkspaceRef = useRef(automationWorkspace);
+  automationWorkspaceRef.current = automationWorkspace;
+
+  const loadAutomationHealth = useCallback(async () => {
+    try {
+      const response = await fetch('/api/automation/health');
+      if (!response.ok) throw new Error(`health check failed (${response.status})`);
+      const payload = await response.json() as AutomationHealthResponse;
+      setAutomationHealth(payload);
+    } catch {
+      setAutomationHealth(null);
+      setAutomationNotice('Automation backend unavailable — core subnetting still works fully offline.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (AI_ASSIST_ENABLED) void loadAutomationHealth();
+  }, [loadAutomationHealth]);
+
+  useEffect(() => {
+    if (
+      automationResponse
+      && automationResponseWorkspace
+      && !sameAutomationWorkspace(automationResponseWorkspace, automationWorkspace)
+    ) {
+      setAutomationResponse(null);
+      setAutomationResponseWorkspace(null);
+      setAutomationNotice('Workspace changed since this plan was generated. Interpret the prompt again.');
+    }
+  }, [
+    automationResponse,
+    automationResponseWorkspace,
+    automationWorkspace.baseCidr,
+    automationWorkspace.basePrefix,
+    automationWorkspace.mode,
+    automationWorkspace.equalSplitPrefix,
+  ]);
+
+  const toggleAutomation = () => {
+    setAutomationVisible(visible => {
+      const nextVisible = !visible;
+      if (nextVisible && AI_ASSIST_ENABLED) void loadAutomationHealth();
+      return nextVisible;
+    });
+  };
+
+  const runAutomationPrompt = async () => {
+    if (!AI_ASSIST_ENABLED) return;
+    if (!automationPrompt.trim() || automationBusy) return;
+    setAutomationBusy(true);
+    setAutomationNotice(null);
+    setAutomationResponse(null);
+    setAutomationResponseWorkspace(null);
+
+    try {
+      const payload: AutomationInterpretRequest = {
+        prompt: automationPrompt.trim(),
+        workspace: automationWorkspace,
+      };
+      const response = await fetch('/api/automation/interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json() as AutomationInterpretResponse;
+      if (!sameAutomationWorkspace(automationWorkspaceRef.current, payload.workspace)) {
+        setAutomationNotice('Workspace changed while the request was in progress. Interpret the prompt again.');
+        return;
+      }
+      setAutomationResponse(body);
+      setAutomationResponseWorkspace(body.plan ? payload.workspace : null);
+      if (!response.ok && body.message) {
+        setAutomationNotice(body.message);
+      }
+    } catch (error) {
+      setAutomationResponse(null);
+      setAutomationNotice(error instanceof Error ? error.message : 'Automation request failed.');
+    } finally {
+      setAutomationBusy(false);
+    }
+  };
+
+  const applyAutomationResponse = () => {
+    if (!automationResponse?.plan) return;
+    if (
+      !automationResponseWorkspace
+      || !sameAutomationWorkspace(automationResponseWorkspace, automationWorkspace)
+    ) {
+      setAutomationResponse(null);
+      setAutomationResponseWorkspace(null);
+      setAutomationNotice('Workspace changed since this plan was generated. Interpret the prompt again.');
+      return;
+    }
+    const result = applyAutomationPlan(automationResponse.plan);
+    setAutomationNotice(result.message);
+    if (result.ok) {
+      setAutomationPrompt('');
+      setAutomationResponse(null);
+      setAutomationResponseWorkspace(null);
+    }
+  };
+
+  const clearAutomationResult = () => {
+    setAutomationResponse(null);
+    setAutomationResponseWorkspace(null);
+    setAutomationNotice(null);
+  };
 
   // ── VLSM allocation (only in vlsm mode) ─────────────────────────────────
   const { allocations, unallocated } = React.useMemo(() => {
@@ -189,8 +322,25 @@ const App = () => {
         <Header
           mode={state.mode}
           setMode={updateMode}
+          automationEnabled={AI_ASSIST_ENABLED}
+          automationVisible={automationVisible}
+          onToggleAutomation={toggleAutomation}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+
+        {AI_ASSIST_ENABLED && automationVisible && (
+          <AutomationPanel
+            prompt={automationPrompt}
+            response={automationResponse}
+            health={automationHealth}
+            busy={automationBusy}
+            notice={automationNotice}
+            onPromptChange={setAutomationPrompt}
+            onSubmit={() => { void runAutomationPrompt(); }}
+            onApply={applyAutomationResponse}
+            onClear={clearAutomationResult}
+          />
+        )}
 
         <div className="layout">
           {/* ── LEFT RAIL ── */}
@@ -241,7 +391,10 @@ const App = () => {
 
                 <div className="vlsm-editor">
                   <div className="vlsm-sorted-indicator">
-                    Auto-sorted by size (largest first) — drag rows to reorder
+                    Allocation is always packed largest-first by host count.
+                    <span style={{ color: 'var(--muted-2)', marginLeft: '8px' }}>
+                      Row order is for editing only and does not change allocation results.
+                    </span>
                     {vlsmSearch && (
                       <span style={{ color: 'var(--network)', marginLeft: '8px' }}>
                         · {filteredVlsmRequests.length} of {state.vlsmRequests.length} shown
@@ -265,22 +418,30 @@ const App = () => {
                     </div>
                   )}
 
-                  {filteredVlsmRequests.map(req => (
-                    <VlsmRow
-                      key={req.id}
-                      req={req}
-                      allocation={allocationById.get(req.id)}
-                      updateRequest={updateVlsmRequest}
-                      removeRequest={removeVlsmRequest}
-                      onDragStart={(id) => { dragSourceId.current = id; }}
-                      onDrop={(targetId) => {
-                        if (dragSourceId.current && dragSourceId.current !== targetId) {
-                          reorderVlsmRequests(dragSourceId.current, targetId);
-                        }
-                        dragSourceId.current = null;
-                      }}
-                    />
-                  ))}
+                  {filteredVlsmRequests.map(req => {
+                    const requestIndex = state.vlsmRequests.findIndex(item => item.id === req.id);
+                    return (
+                      <VlsmRow
+                        key={req.id}
+                        req={req}
+                        allocation={allocationById.get(req.id)}
+                        updateRequest={updateVlsmRequest}
+                        removeRequest={removeVlsmRequest}
+                        canMoveUp={requestIndex > 0}
+                        canMoveDown={requestIndex >= 0 && requestIndex < state.vlsmRequests.length - 1}
+                        onMoveUp={() => {
+                          if (requestIndex > 0) {
+                            reorderVlsmRequests(req.id, state.vlsmRequests[requestIndex - 1].id);
+                          }
+                        }}
+                        onMoveDown={() => {
+                          if (requestIndex >= 0 && requestIndex < state.vlsmRequests.length - 1) {
+                            reorderVlsmRequests(req.id, state.vlsmRequests[requestIndex + 1].id);
+                          }
+                        }}
+                      />
+                    );
+                  })}
 
                   <button
                     className="btn"
@@ -315,14 +476,28 @@ const App = () => {
           <span>{`// v${SubnetStudioConfig.version}`} {SubnetStudioConfig.stable && `// (stable: v${SubnetStudioConfig.stable})`}</span>
           <div className="footer-right">
             <a
-              className="footer-gh"
+              className="footer-link footer-link--pi"
+              href="https://github.com/earendil-works/pi"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Made using Pi Coding Agent"
+            >
+              made using 
+			  <img
+                className="footer-link__logo footer-link__logo--pi"
+                src="/third-party/Pi_coding_agent.svg"
+                alt=""
+                aria-hidden="true"
+              />
+            </a>
+            <a
+              className="footer-link footer-link--gh"
               href="https://github.com/shaneburns/SubnetStudio"
               target="_blank"
               rel="noopener noreferrer"
               title="View source on GitHub"
             >
-              {/* GitHub mark SVG */}
-              <svg className="footer-gh__icon" viewBox="0 0 16 16" aria-hidden="true">
+              <svg className="footer-link__icon" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
                   0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
                   -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66

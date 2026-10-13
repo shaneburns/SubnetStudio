@@ -1,6 +1,6 @@
 # SubnetStudio
 
-> **⚠️ Alpha Software — v0.0.1a-1**
+> **⚠️ Alpha Software — v0.0.2a**
 >
 > SubnetStudio is in early alpha. Bugs are likely. If you run into anything
 > unexpected, please **[open an issue](https://github.com/shaneburns/SubnetStudio/issues)**
@@ -14,8 +14,14 @@
 ---
 
 A visual-first IPv4 subnetting tool designed for learning and planning network
-address spaces. Built as a fully client-side PWA — nothing is sent or stored,
-everything runs in the browser.
+address spaces. Core subnet math and visualization remain deterministic and
+browser-first.
+
+Most of the app still runs fully client-side. The repo also contains an
+**optional automation backend** for TypeSafe-powered natural-language commands,
+but it is **feature-flagged off** in v0.0.2a (see [AI Assist feature flag](#ai-assist-feature-flag))
+and slated for v0.0.3a. Nothing is sent off-device unless the flag is enabled
+and you explicitly use the automation feature.
 
 **Live:** [subnetstudio.infispect.com](https://subnetstudio.infispect.com)
 **Issues / Feedback:** [github.com/shaneburns/SubnetStudio/issues](https://github.com/shaneburns/SubnetStudio/issues)
@@ -27,7 +33,7 @@ everything runs in the browser.
 - **Equal-Split mode** — divide any base network into equal-sized subnets with
   common-prefix shortcuts and a live block visualizer
 - **VLSM mode** — auto-allocate the smallest fitting subnet per named segment;
-  drag-to-reorder, overflow detection, single unallocated remainder block
+  largest-first packing, overflow detection, single unallocated remainder block
 - **Bit Ruler** — 32-bit visual breakdown with three-state VLSM colouring
   (base-fixed / borrowed / host) and click-to-set-prefix
 - **Address Block Map** — proportional bar view (≤32 blocks) and compact tile
@@ -39,6 +45,9 @@ everything runs in the browser.
 - **BitNoise background** — Perlin-noise-driven animated bit grid that adapts
   to the active theme palette
 - **PWA** — installable, works fully offline after first load
+- **Automation command bar** *(preview — off by default, targeting v0.0.3a)* —
+  optional cloud-assisted natural-language command entry with confidence-scored
+  previews before apply; enabled via `VITE_ENABLE_AI_ASSIST=true`
 
 ---
 
@@ -51,6 +60,7 @@ everything runs in the browser.
 | Styling | Custom CSS design tokens |
 | PWA | `vite-plugin-pwa` |
 | Tests | Vitest |
+| Optional automation backend | Node.js + TypeScript companion service |
 | Serving (prod) | nginx:alpine (via multi-stage Docker build) |
 | Proxy / TLS | Caddy (automatic Let's Encrypt) |
 
@@ -62,16 +72,57 @@ everything runs in the browser.
 - Node.js v18 or newer
 - npm
 
-### Install & run
+### Install
 
 ```bash
 git clone https://github.com/shaneburns/SubnetStudio.git
 cd SubnetStudio
 npm install
+```
+
+### Run the core app only
+
+```bash
 npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
+
+### Run the automation backend too
+
+> The AI Assist UI is hidden unless `VITE_ENABLE_AI_ASSIST=true` is set — see
+> [AI Assist feature flag](#ai-assist-feature-flag).
+
+Copy the example env file and add your TypeSafe key:
+
+```bash
+cp .env.example .env.local
+```
+
+The backend automatically loads `.env` first and then `.env.local` (with `.env.local`
+winning if both define the same variable). By default it binds to `127.0.0.1` and only
+allows browser origins from the local Vite dev server. Leave `NODE_ENV` unset (or set it
+to `development`) for verbose client-facing diagnostics while developing; set it to
+`production` to redact provider/config details from client responses. Set
+`AUTOMATION_ALLOWED_ORIGINS` to add a local browser origin if needed. The backend
+intentionally rejects non-loopback bind hosts; it is not designed to be exposed to
+other machines or deployed as a public service.
+
+Then either run both services together:
+
+```bash
+npm run dev:full
+```
+
+Or run them separately:
+
+```bash
+npm run backend:dev
+npm run dev
+```
+
+The frontend uses `/api/automation/*` in development and Vite proxies that to the
+local backend service.
 
 ### Production build
 
@@ -84,9 +135,50 @@ npm run preview    # serve the built output locally
 
 ```bash
 npm test
+npm run typecheck
 ```
 
 ---
+
+## AI Assist feature flag
+
+The AI Assist panel (✦ button, automation command bar, and all
+`/api/automation/*` requests) is gated behind a **build-time** flag:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `VITE_ENABLE_AI_ASSIST` | unset / `false` | AI UI is not rendered and no backend requests are made. Vite inlines the flag, so the panel is tree-shaken out of production bundles. |
+| `VITE_ENABLE_AI_ASSIST=true` | — | Shows the ✦ toggle and enables the automation panel + backend calls. |
+
+- **v0.0.2a ships with the flag off.** The production Docker image
+  (`docker/dockerfile.prod`) runs `npm run build` without the variable, so the
+  deployed site contains no AI surface and never contacts an automation backend.
+- To work on AI features locally, add `VITE_ENABLE_AI_ASSIST=true` to
+  `.env.local` (gitignored) and run `npm run dev:full`.
+- Because `VITE_*` values are baked in at build time, flipping the flag requires
+  a rebuild — it is not a runtime toggle.
+- The flag lives in `src/config/featureFlags.ts`; the `server/` companion is
+  unaffected and simply isn't started in flag-off deployments.
+
+---
+
+## Automation Notes
+
+- The automation feature is **optional** and **disabled by default** (see above).
+- Core subnetting continues to work without the backend.
+- When you use the command bar, your prompt is sent to the local backend and,
+  if configured, onward to the TypeSafe endpoint defined by `TYPESAFE_API_URL`.
+- `TYPESAFE_API_KEY` is read **server-side only** and is never exposed to the
+  React client.
+- The automation companion binds to localhost by default and restricts direct
+  browser access to configured origins. It rejects non-loopback bind hosts and
+  must not be exposed beyond the local machine.
+- In development, the backend returns verbose error/config details to help with
+  debugging. In production, it redacts upstream/provider details from health and
+  error responses while logging full server-side diagnostics.
+- The current automation slice is intentionally narrow: mode changes, base CIDR
+  updates, equal-split prefix changes (including requests such as “at least 5
+  subnets”), and simple VLSM request upserts/batches.
 
 ## Project Structure
 
@@ -107,4 +199,3 @@ src/
 ```
 
 ---
-
