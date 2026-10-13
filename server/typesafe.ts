@@ -32,6 +32,7 @@ export async function callTypeSafeSystemOne(requestBody: unknown): Promise<TypeS
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

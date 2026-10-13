@@ -64,4 +64,34 @@ describe('RangeReport', () => {
 		expect(screen.queryByRole('checkbox', { name: /toggle all/i })).toBeNull();
 		expect(document.querySelector('.rr-export-list')).toBeNull();
 	});
+
+	it('resets export selection when blocks change without a mode change', () => {
+		const { rerender } = render(
+			<RangeReport
+				blocks={[
+					{ ...subnetInfo('10.0.0.0', 25), name: 'guest', status: 'allocated' as const },
+					{ ...subnetInfo('10.0.0.128', 26), name: 'staff', status: 'allocated' as const },
+				]}
+				selectedIdx={0}
+				onSelect={vi.fn()}
+				mode="vlsm"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole('button', { name: /export/i }));
+		expect(screen.getByRole('button', { name: '↓ Download (2)' })).toBeTruthy();
+
+		rerender(
+			<RangeReport
+				blocks={[{ ...subnetInfo('10.0.0.0', 24), name: 'updated', status: 'allocated' as const }]}
+				selectedIdx={0}
+				onSelect={vi.fn()}
+				mode="vlsm"
+			/>,
+		);
+
+		expect(screen.queryByRole('button', { name: /↓ Download/i })).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: /export/i }));
+		expect(screen.getByRole('button', { name: '↓ Download (1)' })).toBeTruthy();
+	});
 });

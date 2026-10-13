@@ -154,6 +154,24 @@ function prefixForMinimumSubnetCount(basePrefix: number, subnetCount: number): n
   return targetPrefix <= 32 ? targetPrefix : null;
 }
 
+function prefixesForSubnetCounts(basePrefixes: number[], subnetCounts: number[]): number[] {
+  return unique(basePrefixes.flatMap(basePrefix =>
+    subnetCounts
+      .map(count => prefixForMinimumSubnetCount(basePrefix, count))
+      .filter((prefix): prefix is number => prefix !== null),
+  ));
+}
+
+function derivedPrefixForBase(basePrefix: number, subnetCounts: number[], explicitPrefixes: number[]): number | null {
+  if (explicitPrefixes.length > 0) return null;
+  const prefixes = unique(
+    subnetCounts
+      .map(count => prefixForMinimumSubnetCount(basePrefix, count))
+      .filter((prefix): prefix is number => prefix !== null),
+  );
+  return prefixes.length === 1 ? prefixes[0] : null;
+}
+
 function extractCandidateRequests(prompt: string): CandidateRequest[] {
   const results: CandidateRequest[] = [];
 
@@ -254,12 +272,6 @@ function createPrefixQuestion(prefixCandidates: number[]) {
     instructions: 'If the prompt specifies an explicit equal-split target prefix, which candidate prefix is intended?',
     criteria,
   };
-}
-
-function resolveDerivedPrefix(derivedPrefixCandidates: number[], explicitPrefixCandidates: number[]): number | null {
-  if (explicitPrefixCandidates.length > 0) return null;
-  const uniqueDerivedPrefixes = unique(derivedPrefixCandidates);
-  return uniqueDerivedPrefixes.length === 1 ? uniqueDerivedPrefixes[0] : null;
 }
 
 function minConfidence(answers: ChoiceAnswer[]): number {
@@ -409,11 +421,14 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
   const cidrCandidates = extractCidrs(prompt);
   const explicitPrefixCandidates = extractExplicitSplitPrefixes(prompt, cidrCandidates);
   const subnetCountCandidates = extractSubnetCounts(prompt);
-  const derivedPrefixCandidates = subnetCountCandidates
-    .map(count => prefixForMinimumSubnetCount(workspace.basePrefix, count))
-    .filter((prefix): prefix is number => prefix !== null);
+  const candidateBasePrefixes = unique([
+    workspace.basePrefix,
+    ...cidrCandidates
+      .map(parseCidrPrefix)
+      .filter((prefix): prefix is number => prefix !== null),
+  ]);
+  const derivedPrefixCandidates = prefixesForSubnetCounts(candidateBasePrefixes, subnetCountCandidates);
   const prefixCandidates = unique([...explicitPrefixCandidates, ...derivedPrefixCandidates]);
-  const derivedPrefix = resolveDerivedPrefix(derivedPrefixCandidates, explicitPrefixCandidates);
   const requestCandidates = extractCandidateRequests(prompt);
 
   const questions: Record<string, unknown> = {
@@ -498,7 +513,7 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
       const selectedPrefix = resolveSelectedPrefix(
         prefixAnswer,
         explicitPrefixCandidates,
-        derivedPrefix,
+        derivedPrefixForBase(resolvedCidrPrefix, subnetCountCandidates, explicitPrefixCandidates),
         resolvedCidrPrefix,
       );
       if (selectedPrefix === undefined) {
@@ -537,7 +552,7 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
       const selectedPrefix = resolveSelectedPrefix(
         prefixAnswer,
         explicitPrefixCandidates,
-        derivedPrefix,
+        derivedPrefixForBase(effectiveBasePrefix, subnetCountCandidates, explicitPrefixCandidates),
         effectiveBasePrefix,
       );
 

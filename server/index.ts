@@ -2,23 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import type {
-  AutomationInterpretRequest,
   AutomationInterpretResponse,
+  AutomationWorkspaceContext,
 } from '../src/types/automation';
 import { getAllowedOrigins, getHost, getModel, getPort, isDevelopment, isTypeSafeConfigured } from './config';
 import { buildHealthResponse, interpretPrompt } from './automation';
 
-function isOriginAllowed(origin: string | undefined, requestHost: string | undefined): boolean {
+const MAX_REQUEST_BODY_BYTES = 64 * 1024;
+
+class RequestBodyTooLargeError extends Error {}
+class InvalidJsonRequestError extends Error {}
+
+function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
-
-  try {
-    if (requestHost && new URL(origin).host === requestHost) {
-      return true;
-    }
-  } catch {
-    return false;
-  }
-
   return getAllowedOrigins().includes(origin);
 }
 
@@ -63,21 +59,71 @@ function logServerError(requestId: string, error: unknown): void {
   console.error(`[automation][${requestId}]`, error);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isValidWorkspace(value: unknown): value is AutomationWorkspaceContext {
+  if (!isRecord(value)) return false;
+  const { baseCidr, basePrefix, mode, equalSplitPrefix } = value;
+  if (typeof baseCidr !== 'string') return false;
+
+  const match = baseCidr.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if (!match) return false;
+  const octets = match.slice(1, 5).map(Number);
+  const cidrPrefix = Number(match[5]);
+  if (octets.some(octet => octet < 0 || octet > 255)) return false;
+  if (!Number.isInteger(basePrefix) || basePrefix !== cidrPrefix || basePrefix < 0 || basePrefix > 32) return false;
+  const address = octets.reduce((value, octet) => (value << 8) | octet, 0) >>> 0;
+  const mask = basePrefix === 0 ? 0 : (0xffffffff << (32 - basePrefix)) >>> 0;
+  if (((address & mask) >>> 0) !== address) return false;
+  if (mode !== 'equal-split' && mode !== 'vlsm') return false;
+  if (equalSplitPrefix !== null) {
+    if (typeof equalSplitPrefix !== 'number'
+      || !Number.isInteger(equalSplitPrefix)
+      || equalSplitPrefix <= basePrefix
+      || equalSplitPrefix > 32) return false;
+    if (Math.pow(2, equalSplitPrefix - basePrefix) > 4096) return false;
+  }
+  return true;
+}
+
 async function readJson<T>(req: IncomingMessage): Promise<T> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const contentLength = Number(req.headers['content-length']);
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    req.resume();
+    throw new RequestBodyTooLargeError();
   }
 
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let tooLarge = false;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_REQUEST_BODY_BYTES) {
+      tooLarge = true;
+    } else if (!tooLarge) {
+      chunks.push(buffer);
+    }
+  }
+
+  if (tooLarge) throw new RequestBodyTooLargeError();
   const raw = Buffer.concat(chunks).toString('utf-8').trim();
-  return raw ? (JSON.parse(raw) as T) : ({} as T);
+  if (!raw) return {} as T;
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new InvalidJsonRequestError();
+    throw error;
+  }
 }
 
 const server = createServer(async (req, res) => {
   const requestId = randomUUID();
   const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
   const requestHost = typeof req.headers.host === 'string' ? req.headers.host : undefined;
-  const allowedOrigin = isOriginAllowed(origin, requestHost) ? origin : undefined;
+  const allowedOrigin = isOriginAllowed(origin) ? origin : undefined;
   const url = new URL(req.url ?? '/', `http://${requestHost ?? 'localhost'}`);
 
   if (origin && !allowedOrigin) {
@@ -97,8 +143,8 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/api/automation/interpret') {
     try {
-      const body = await readJson<AutomationInterpretRequest>(req);
-      const prompt = body.prompt?.trim();
+      const body = await readJson<unknown>(req);
+      const prompt = isRecord(body) && typeof body.prompt === 'string' ? body.prompt.trim() : '';
 
       if (!prompt) {
         const response: AutomationInterpretResponse = {
@@ -115,13 +161,13 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      if (!body.workspace || !Number.isInteger(body.workspace.basePrefix)) {
+      if (!isRecord(body) || !isValidWorkspace(body.workspace)) {
         const response: AutomationInterpretResponse = {
           ok: false,
           provider: 'typesafe',
           configured: isTypeSafeConfigured(),
           status: 'invalid-request',
-          message: 'Expected workspace context with a valid `basePrefix`.',
+          message: 'Expected workspace context with a valid IPv4 CIDR, mode, and equal-split prefix.',
           requestId: isDevelopment() ? undefined : requestId,
           supportedIntents: buildHealthResponse().supportedIntents,
           plan: null,
@@ -130,7 +176,7 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      const response = await interpretPrompt(body);
+      const response = await interpretPrompt({ prompt, workspace: body.workspace });
       const statusCode = response.status === 'not-configured'
         ? 503
         : response.status === 'error'
@@ -143,6 +189,32 @@ const server = createServer(async (req, res) => {
       }, allowedOrigin);
       return;
     } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        sendJson(res, 413, {
+          ok: false,
+          provider: 'typesafe',
+          configured: isTypeSafeConfigured(),
+          status: 'invalid-request',
+          message: 'Request body exceeds the maximum allowed size.',
+          requestId: isDevelopment() ? undefined : requestId,
+          supportedIntents: buildHealthResponse().supportedIntents,
+          plan: null,
+        } satisfies AutomationInterpretResponse, allowedOrigin);
+        return;
+      }
+      if (error instanceof InvalidJsonRequestError) {
+        sendJson(res, 400, {
+          ok: false,
+          provider: 'typesafe',
+          configured: isTypeSafeConfigured(),
+          status: 'invalid-request',
+          message: 'Expected a valid JSON request body.',
+          requestId: isDevelopment() ? undefined : requestId,
+          supportedIntents: buildHealthResponse().supportedIntents,
+          plan: null,
+        } satisfies AutomationInterpretResponse, allowedOrigin);
+        return;
+      }
       logServerError(requestId, error);
       const response: AutomationInterpretResponse = {
         ok: false,

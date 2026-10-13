@@ -26,7 +26,16 @@ export function getPort(): number {
 
 /** Returns the bind host used by the automation companion service. */
 export function getHost(): string {
-  return process.env.AUTOMATION_SERVER_HOST?.trim() || DEFAULT_HOST;
+  const host = process.env.AUTOMATION_SERVER_HOST?.trim() || DEFAULT_HOST;
+  const normalizedHost = host.toLowerCase();
+  const isLoopback = normalizedHost === '::1'
+    || /^127(?:\.\d{1,3}){3}$/.test(normalizedHost);
+
+  if (!isLoopback) {
+    throw new Error('The automation backend must bind to a loopback host.');
+  }
+
+  return host;
 }
 
 /** Returns browser origins allowed to call the automation companion service directly. */

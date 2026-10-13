@@ -235,6 +235,36 @@ describe('automation backend interpretation', () => {
     expect(Object.keys(requestBody.questions)).not.toContain('prefix_choice');
   });
 
+  it('derives a subnet-count prefix from the selected base CIDR rather than the old base', async () => {
+    process.env.TYPESAFE_API_KEY = 'dummy';
+    mockedCallTypeSafeSystemOne.mockResolvedValue({
+      answers: {
+        intent: { type: 'choice', choice: 'set-equal-split-prefix', confidence: 0.94, probabilities: {} },
+        mode_choice: { type: 'choice', choice: 'none', confidence: 0.99, probabilities: {} },
+        cidr_choice: { type: 'choice', choice: '10.0.0.0/16', confidence: 0.98, probabilities: {} },
+      },
+    });
+
+    const response = await interpretPrompt({
+      prompt: 'use 10.0.0.0/16 and split into at least five subnets',
+      workspace: {
+        baseCidr: '192.168.1.0/24',
+        basePrefix: 24,
+        mode: 'equal-split',
+        equalSplitPrefix: null,
+      },
+    });
+
+    expect(response.plan?.actions).toEqual([
+      { intent: 'set-base-cidr', cidr: '10.0.0.0/16' },
+      { intent: 'set-equal-split-prefix', prefix: 19 },
+    ]);
+    const requestBody = mockedCallTypeSafeSystemOne.mock.calls[0][0] as {
+      state: { prefixCandidates: number[] };
+    };
+    expect(requestBody.state.prefixCandidates).toContain(19);
+  });
+
   it('keeps the current base network when a split request references the current CIDR', async () => {
     process.env.TYPESAFE_API_KEY = 'dummy';
     mockedCallTypeSafeSystemOne.mockResolvedValue({

@@ -104,8 +104,9 @@ winning if both define the same variable). By default it binds to `127.0.0.1` an
 allows browser origins from the local Vite dev server. Leave `NODE_ENV` unset (or set it
 to `development`) for verbose client-facing diagnostics while developing; set it to
 `production` to redact provider/config details from client responses. Set
-`AUTOMATION_SERVER_HOST` and `AUTOMATION_ALLOWED_ORIGINS` explicitly if you deploy it
-behind another origin.
+`AUTOMATION_ALLOWED_ORIGINS` to add a local browser origin if needed. The backend
+intentionally rejects non-loopback bind hosts; it is not designed to be exposed to
+other machines or deployed as a public service.
 
 Then either run both services together:
 
@@ -170,8 +171,8 @@ The AI Assist panel (✦ button, automation command bar, and all
 - `TYPESAFE_API_KEY` is read **server-side only** and is never exposed to the
   React client.
 - The automation companion binds to localhost by default and restricts direct
-  browser access to configured origins. Configure `AUTOMATION_SERVER_HOST` and
-  `AUTOMATION_ALLOWED_ORIGINS` before exposing it anywhere beyond local dev.
+  browser access to configured origins. It rejects non-loopback bind hosts and
+  must not be exposed beyond the local machine.
 - In development, the backend returns verbose error/config details to help with
   debugging. In production, it redacts upstream/provider details from health and
   error responses while logging full server-side diagnostics.
@@ -198,4 +199,3 @@ src/
 ```
 
 ---
-

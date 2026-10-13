@@ -132,7 +132,7 @@ export const RangeReport = ({ blocks, selectedIdx, onSelect, mode }: RangeReport
     setExportFmt('csv');
     setExclUnalloc(false);
     setSelectedRows(new Set());
-  }, [mode]);
+  }, [blocks, mode]);
 
   const allSelected = exportableBlocks.length > 0 &&
     exportableBlocks.every(({ i }) => selectedRows.has(i));
