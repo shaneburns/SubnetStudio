@@ -588,6 +588,11 @@ export async function interpretPrompt(request: AutomationInterpretRequest): Prom
           unsupportedPlan('The prompt asked for a VLSM request, but no name/host pair could be extracted safely.', intentAnswer.confidence),
         );
       }
+      if (requestCandidates.length > 1) {
+        return buildReadyResponse(
+          unsupportedPlan('The prompt contains multiple VLSM requests, but the provider selected a single-request action.', intentAnswer.confidence),
+        );
+      }
 
       if (cidrAnswer && cidrAnswer.choice !== 'none' && !resolvedCidrChoice) {
         return buildReadyResponse(

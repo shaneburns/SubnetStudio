@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SubnetStudioConfig } from './config/SubnetStudioConfig';
 import { AI_ASSIST_ENABLED } from './config/featureFlags';
 function useClock() {
@@ -12,7 +12,7 @@ function useClock() {
 
 import { useNetworkState } from './state/useNetworkState';
 import { useTheme } from './state/useTheme';
-import { AutomationHealthResponse, AutomationInterpretRequest, AutomationInterpretResponse } from './types/automation';
+import { AutomationHealthResponse, AutomationInterpretRequest, AutomationInterpretResponse, AutomationWorkspaceContext } from './types/automation';
 import {
   subnetInfo,
   intToIp,
@@ -40,6 +40,16 @@ interface ExtendedBlock extends SubnetInfo {
   isRemainder?: boolean;
 }
 
+function sameAutomationWorkspace(
+  left: AutomationWorkspaceContext,
+  right: AutomationWorkspaceContext,
+): boolean {
+  return left.baseCidr === right.baseCidr
+    && left.basePrefix === right.basePrefix
+    && left.mode === right.mode
+    && left.equalSplitPrefix === right.equalSplitPrefix;
+}
+
 const App = () => {
   const {
     state,
@@ -49,6 +59,7 @@ const App = () => {
     addVlsmRequest,
     removeVlsmRequest,
     updateVlsmRequest,
+    reorderVlsmRequests,
     setSelectedBlockIdx,
     applyAutomationPlan,
   } = useNetworkState();
@@ -70,47 +81,72 @@ const App = () => {
   const [automationBusy, setAutomationBusy] = useState(false);
   const [automationHealth, setAutomationHealth] = useState<AutomationHealthResponse | null>(null);
   const [automationResponse, setAutomationResponse] = useState<AutomationInterpretResponse | null>(null);
+  const [automationResponseWorkspace, setAutomationResponseWorkspace] = useState<AutomationWorkspaceContext | null>(null);
   const [automationNotice, setAutomationNotice] = useState<string | null>(null);
+  const automationWorkspace: AutomationWorkspaceContext = {
+    baseCidr: `${state.base.ip}/${state.base.prefix}`,
+    basePrefix: state.base.prefix,
+    mode: state.mode,
+    equalSplitPrefix: state.equalSplitPrefix,
+  };
+  const automationWorkspaceRef = useRef(automationWorkspace);
+  automationWorkspaceRef.current = automationWorkspace;
+
+  const loadAutomationHealth = useCallback(async () => {
+    try {
+      const response = await fetch('/api/automation/health');
+      if (!response.ok) throw new Error(`health check failed (${response.status})`);
+      const payload = await response.json() as AutomationHealthResponse;
+      setAutomationHealth(payload);
+    } catch {
+      setAutomationHealth(null);
+      setAutomationNotice('Automation backend unavailable — core subnetting still works fully offline.');
+    }
+  }, []);
 
   useEffect(() => {
-    if (!AI_ASSIST_ENABLED) return;
-    let active = true;
+    if (AI_ASSIST_ENABLED) void loadAutomationHealth();
+  }, [loadAutomationHealth]);
 
-    const loadAutomationHealth = async () => {
-      try {
-        const response = await fetch('/api/automation/health');
-        if (!response.ok) throw new Error(`health check failed (${response.status})`);
-        const payload = await response.json() as AutomationHealthResponse;
-        if (active) setAutomationHealth(payload);
-      } catch {
-        if (active) {
-          setAutomationHealth(null);
-          setAutomationNotice('Automation backend unavailable — core subnetting still works fully offline.');
-        }
-      }
-    };
+  useEffect(() => {
+    if (
+      automationResponse
+      && automationResponseWorkspace
+      && !sameAutomationWorkspace(automationResponseWorkspace, automationWorkspace)
+    ) {
+      setAutomationResponse(null);
+      setAutomationResponseWorkspace(null);
+      setAutomationNotice('Workspace changed since this plan was generated. Interpret the prompt again.');
+    }
+  }, [
+    automationResponse,
+    automationResponseWorkspace,
+    automationWorkspace.baseCidr,
+    automationWorkspace.basePrefix,
+    automationWorkspace.mode,
+    automationWorkspace.equalSplitPrefix,
+  ]);
 
-    void loadAutomationHealth();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const toggleAutomation = () => {
+    setAutomationVisible(visible => {
+      const nextVisible = !visible;
+      if (nextVisible && AI_ASSIST_ENABLED) void loadAutomationHealth();
+      return nextVisible;
+    });
+  };
 
   const runAutomationPrompt = async () => {
     if (!AI_ASSIST_ENABLED) return;
     if (!automationPrompt.trim() || automationBusy) return;
     setAutomationBusy(true);
     setAutomationNotice(null);
+    setAutomationResponse(null);
+    setAutomationResponseWorkspace(null);
 
     try {
       const payload: AutomationInterpretRequest = {
         prompt: automationPrompt.trim(),
-        workspace: {
-          baseCidr: `${state.base.ip}/${state.base.prefix}`,
-          basePrefix: state.base.prefix,
-          mode: state.mode,
-          equalSplitPrefix: state.equalSplitPrefix,
-        },
+        workspace: automationWorkspace,
       };
       const response = await fetch('/api/automation/interpret', {
         method: 'POST',
@@ -118,7 +154,12 @@ const App = () => {
         body: JSON.stringify(payload),
       });
       const body = await response.json() as AutomationInterpretResponse;
+      if (!sameAutomationWorkspace(automationWorkspaceRef.current, payload.workspace)) {
+        setAutomationNotice('Workspace changed while the request was in progress. Interpret the prompt again.');
+        return;
+      }
       setAutomationResponse(body);
+      setAutomationResponseWorkspace(body.plan ? payload.workspace : null);
       if (!response.ok && body.message) {
         setAutomationNotice(body.message);
       }
@@ -132,16 +173,27 @@ const App = () => {
 
   const applyAutomationResponse = () => {
     if (!automationResponse?.plan) return;
+    if (
+      !automationResponseWorkspace
+      || !sameAutomationWorkspace(automationResponseWorkspace, automationWorkspace)
+    ) {
+      setAutomationResponse(null);
+      setAutomationResponseWorkspace(null);
+      setAutomationNotice('Workspace changed since this plan was generated. Interpret the prompt again.');
+      return;
+    }
     const result = applyAutomationPlan(automationResponse.plan);
     setAutomationNotice(result.message);
     if (result.ok) {
       setAutomationPrompt('');
       setAutomationResponse(null);
+      setAutomationResponseWorkspace(null);
     }
   };
 
   const clearAutomationResult = () => {
     setAutomationResponse(null);
+    setAutomationResponseWorkspace(null);
     setAutomationNotice(null);
   };
 
@@ -272,7 +324,7 @@ const App = () => {
           setMode={updateMode}
           automationEnabled={AI_ASSIST_ENABLED}
           automationVisible={automationVisible}
-          onToggleAutomation={() => setAutomationVisible(visible => !visible)}
+          onToggleAutomation={toggleAutomation}
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
@@ -366,15 +418,30 @@ const App = () => {
                     </div>
                   )}
 
-                  {filteredVlsmRequests.map(req => (
-                    <VlsmRow
-                      key={req.id}
-                      req={req}
-                      allocation={allocationById.get(req.id)}
-                      updateRequest={updateVlsmRequest}
-                      removeRequest={removeVlsmRequest}
-                    />
-                  ))}
+                  {filteredVlsmRequests.map(req => {
+                    const requestIndex = state.vlsmRequests.findIndex(item => item.id === req.id);
+                    return (
+                      <VlsmRow
+                        key={req.id}
+                        req={req}
+                        allocation={allocationById.get(req.id)}
+                        updateRequest={updateVlsmRequest}
+                        removeRequest={removeVlsmRequest}
+                        canMoveUp={requestIndex > 0}
+                        canMoveDown={requestIndex >= 0 && requestIndex < state.vlsmRequests.length - 1}
+                        onMoveUp={() => {
+                          if (requestIndex > 0) {
+                            reorderVlsmRequests(req.id, state.vlsmRequests[requestIndex - 1].id);
+                          }
+                        }}
+                        onMoveDown={() => {
+                          if (requestIndex >= 0 && requestIndex < state.vlsmRequests.length - 1) {
+                            reorderVlsmRequests(req.id, state.vlsmRequests[requestIndex + 1].id);
+                          }
+                        }}
+                      />
+                    );
+                  })}
 
                   <button
                     className="btn"

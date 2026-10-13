@@ -74,9 +74,6 @@ function isValidWorkspace(value: unknown): value is AutomationWorkspaceContext {
   const cidrPrefix = Number(match[5]);
   if (octets.some(octet => octet < 0 || octet > 255)) return false;
   if (!Number.isInteger(basePrefix) || basePrefix !== cidrPrefix || basePrefix < 0 || basePrefix > 32) return false;
-  const address = octets.reduce((value, octet) => (value << 8) | octet, 0) >>> 0;
-  const mask = basePrefix === 0 ? 0 : (0xffffffff << (32 - basePrefix)) >>> 0;
-  if (((address & mask) >>> 0) !== address) return false;
   if (mode !== 'equal-split' && mode !== 'vlsm') return false;
   if (equalSplitPrefix !== null) {
     if (typeof equalSplitPrefix !== 'number'

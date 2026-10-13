@@ -202,6 +202,34 @@ describe('automation backend interpretation', () => {
     ]);
   });
 
+  it('rejects a single-request action when the prompt contains multiple VLSM requests', async () => {
+    process.env.TYPESAFE_API_KEY = 'dummy';
+    mockedCallTypeSafeSystemOne.mockResolvedValue({
+      answers: {
+        intent: { type: 'choice', choice: 'upsert-vlsm-request', confidence: 0.93, probabilities: {} },
+        mode_choice: { type: 'choice', choice: 'vlsm', confidence: 0.96, probabilities: {} },
+        cidr_choice: { type: 'choice', choice: 'none', confidence: 1, probabilities: {} },
+      },
+    });
+
+    const response = await interpretPrompt({
+      prompt: 'guest: 120, staff: 60',
+      workspace: {
+        baseCidr: '192.168.1.0/24',
+        basePrefix: 24,
+        mode: 'vlsm',
+        equalSplitPrefix: null,
+      },
+    });
+
+    expect(response.plan?.actions).toEqual([
+      {
+        intent: 'unsupported',
+        reason: 'The prompt contains multiple VLSM requests, but the provider selected a single-request action.',
+      },
+    ]);
+  });
+
   it('derives an equal-split prefix from a requested minimum subnet count', async () => {
     process.env.TYPESAFE_API_KEY = 'dummy';
     mockedCallTypeSafeSystemOne.mockResolvedValue({

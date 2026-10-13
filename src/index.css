@@ -1133,6 +1133,16 @@ html[data-theme='desert-night'] .automation-panel__provider-logo--dark{
   font-family:'IBM Plex Mono', monospace;
   font-size:11px;
 }
+.vlsm-row .btn-reorder{
+  background:var(--panel-2);
+  color:var(--muted);
+  border:1px solid var(--grid);
+  padding:2px 8px;
+}
+.vlsm-row .btn-reorder:disabled{
+  cursor:not-allowed;
+  opacity:.45;
+}
 .vlsm-sorted-indicator{
   font-size:10px;
   color:var(--muted-2);
